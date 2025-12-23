@@ -35,16 +35,12 @@ func NewRateLimiter(limit int, window time.Duration) *RateLimiter {
 	return rl
 }
 
-// RateLimit returns a middleware that rate limits requests per org
+// RateLimit returns a middleware that rate limits requests by client IP
 func (rl *RateLimiter) RateLimit() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		orgID := GetOrgID(c)
-		if orgID == "" {
-			// No org ID, use IP address
-			orgID = c.ClientIP()
-		}
+		clientIP := c.ClientIP()
 
-		if !rl.allow(orgID) {
+		if !rl.allow(clientIP) {
 			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
 				"error": gin.H{
 					"code":    "RATE_LIMITED",

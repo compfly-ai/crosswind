@@ -15,7 +15,6 @@ import (
 var (
 	ErrAgentNotFound      = errors.New("agent not found")
 	ErrAgentAlreadyExists = errors.New("agent already exists")
-	ErrSnapshotNotFound   = errors.New("agent snapshot not found")
 	ErrInvalidProtocol    = errors.New("invalid protocol")
 	ErrEvalRunNotFound    = errors.New("evaluation run not found")
 	ErrEvalAlreadyRunning = errors.New("evaluation already running")
@@ -23,7 +22,6 @@ var (
 	ErrInvalidEvalMode    = errors.New("invalid evaluation mode")
 	ErrResultsNotReady    = errors.New("results not ready")
 	ErrDatasetNotFound    = errors.New("dataset not found")
-	ErrOrgNotFound        = errors.New("organization not found")
 	ErrGCSNotConfigured   = errors.New("GCS storage not configured")
 
 	// Protocol-specific validation errors

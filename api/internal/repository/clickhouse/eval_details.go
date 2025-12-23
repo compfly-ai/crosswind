@@ -11,28 +11,27 @@ import (
 
 // EvalDetail represents a single evaluation result row
 type EvalDetail struct {
-	RunID            string    `ch:"run_id"`
-	OrgID            string    `ch:"org_id"`
-	AgentID          string    `ch:"agent_id"`
-	DatasetID        string    `ch:"dataset_id"`
-	DatasetVersion   string    `ch:"dataset_version"`
-	Category         string    `ch:"category"`
-	PromptID         string    `ch:"prompt_id"`
-	PromptText       string    `ch:"prompt_text"`
-	PromptMetadata   string    `ch:"prompt_metadata"` // JSON
-	AttackType       string    `ch:"attack_type"`
-	Severity         string    `ch:"severity"`
-	AgentResponse    string    `ch:"agent_response"`
-	ResponseLatencyMs uint32   `ch:"response_latency_ms"`
-	SessionID        string    `ch:"session_id"`
-	TurnNumber       uint8     `ch:"turn_number"`
-	Judgment         string    `ch:"judgment"` // pass | fail | uncertain | error
-	JudgmentConfidence float32 `ch:"judgment_confidence"`
-	JudgeModel       string    `ch:"judge_model"`
-	JudgmentReasoning string   `ch:"judgment_reasoning"`
-	FailureType      *string   `ch:"failure_type"`
-	RegulatoryFlags  []string  `ch:"regulatory_flags"`
-	Timestamp        time.Time `ch:"timestamp"`
+	RunID              string    `ch:"run_id"`
+	AgentID            string    `ch:"agent_id"`
+	DatasetID          string    `ch:"dataset_id"`
+	DatasetVersion     string    `ch:"dataset_version"`
+	Category           string    `ch:"category"`
+	PromptID           string    `ch:"prompt_id"`
+	PromptText         string    `ch:"prompt_text"`
+	PromptMetadata     string    `ch:"prompt_metadata"` // JSON
+	AttackType         string    `ch:"attack_type"`
+	Severity           string    `ch:"severity"`
+	AgentResponse      string    `ch:"agent_response"`
+	ResponseLatencyMs  uint32    `ch:"response_latency_ms"`
+	SessionID          string    `ch:"session_id"`
+	TurnNumber         uint8     `ch:"turn_number"`
+	Judgment           string    `ch:"judgment"` // pass | fail | uncertain | error
+	JudgmentConfidence float32   `ch:"judgment_confidence"`
+	JudgeModel         string    `ch:"judge_model"`
+	JudgmentReasoning  string    `ch:"judgment_reasoning"`
+	FailureType        *string   `ch:"failure_type"`
+	RegulatoryFlags    []string  `ch:"regulatory_flags"`
+	Timestamp          time.Time `ch:"timestamp"`
 }
 
 // EvalDetailsRepository handles eval_details table operations
@@ -50,7 +49,7 @@ func (r *EvalDetailsRepository) InsertBatch(ctx context.Context, details []EvalD
 
 	batch, err := r.conn.PrepareBatch(ctx, fmt.Sprintf(`
 		INSERT INTO %s.eval_details (
-			run_id, org_id, agent_id, dataset_id, dataset_version, category,
+			run_id, agent_id, dataset_id, dataset_version, category,
 			prompt_id, prompt_text, prompt_metadata, attack_type, severity,
 			agent_response, response_latency_ms, session_id, turn_number,
 			judgment, judgment_confidence, judge_model, judgment_reasoning,
@@ -63,7 +62,7 @@ func (r *EvalDetailsRepository) InsertBatch(ctx context.Context, details []EvalD
 
 	for _, d := range details {
 		err := batch.Append(
-			d.RunID, d.OrgID, d.AgentID, d.DatasetID, d.DatasetVersion, d.Category,
+			d.RunID, d.AgentID, d.DatasetID, d.DatasetVersion, d.Category,
 			d.PromptID, d.PromptText, d.PromptMetadata, d.AttackType, d.Severity,
 			d.AgentResponse, d.ResponseLatencyMs, d.SessionID, d.TurnNumber,
 			d.Judgment, d.JudgmentConfidence, d.JudgeModel, d.JudgmentReasoning,
@@ -89,7 +88,7 @@ func (r *EvalDetailsRepository) InsertBatch(ctx context.Context, details []EvalD
 func (r *EvalDetailsRepository) GetByRunID(ctx context.Context, runID string) ([]EvalDetail, error) {
 	rows, err := r.conn.Query(ctx, fmt.Sprintf(`
 		SELECT
-			run_id, org_id, agent_id, dataset_id, dataset_version, category,
+			run_id, agent_id, dataset_id, dataset_version, category,
 			prompt_id, prompt_text, prompt_metadata, attack_type, severity,
 			agent_response, response_latency_ms, session_id, turn_number,
 			judgment, judgment_confidence, judge_model, judgment_reasoning,
@@ -107,7 +106,7 @@ func (r *EvalDetailsRepository) GetByRunID(ctx context.Context, runID string) ([
 	for rows.Next() {
 		var d EvalDetail
 		err := rows.Scan(
-			&d.RunID, &d.OrgID, &d.AgentID, &d.DatasetID, &d.DatasetVersion, &d.Category,
+			&d.RunID, &d.AgentID, &d.DatasetID, &d.DatasetVersion, &d.Category,
 			&d.PromptID, &d.PromptText, &d.PromptMetadata, &d.AttackType, &d.Severity,
 			&d.AgentResponse, &d.ResponseLatencyMs, &d.SessionID, &d.TurnNumber,
 			&d.Judgment, &d.JudgmentConfidence, &d.JudgeModel, &d.JudgmentReasoning,
@@ -126,7 +125,7 @@ func (r *EvalDetailsRepository) GetByRunID(ctx context.Context, runID string) ([
 func (r *EvalDetailsRepository) GetFailuresByRunID(ctx context.Context, runID string, limit int) ([]EvalDetail, error) {
 	rows, err := r.conn.Query(ctx, fmt.Sprintf(`
 		SELECT
-			run_id, org_id, agent_id, dataset_id, dataset_version, category,
+			run_id, agent_id, dataset_id, dataset_version, category,
 			prompt_id, prompt_text, prompt_metadata, attack_type, severity,
 			agent_response, response_latency_ms, session_id, turn_number,
 			judgment, judgment_confidence, judge_model, judgment_reasoning,
@@ -152,7 +151,7 @@ func (r *EvalDetailsRepository) GetFailuresByRunID(ctx context.Context, runID st
 	for rows.Next() {
 		var d EvalDetail
 		err := rows.Scan(
-			&d.RunID, &d.OrgID, &d.AgentID, &d.DatasetID, &d.DatasetVersion, &d.Category,
+			&d.RunID, &d.AgentID, &d.DatasetID, &d.DatasetVersion, &d.Category,
 			&d.PromptID, &d.PromptText, &d.PromptMetadata, &d.AttackType, &d.Severity,
 			&d.AgentResponse, &d.ResponseLatencyMs, &d.SessionID, &d.TurnNumber,
 			&d.Judgment, &d.JudgmentConfidence, &d.JudgeModel, &d.JudgmentReasoning,

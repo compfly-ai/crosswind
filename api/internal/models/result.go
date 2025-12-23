@@ -11,7 +11,6 @@ type EvalResultsSummary struct {
 	ID                 primitive.ObjectID       `bson:"_id,omitempty" json:"-"`
 	RunID              string                   `bson:"runId" json:"runId"`
 	AgentID            string                   `bson:"agentId" json:"agentId"`
-	SnapshotID         string                   `bson:"snapshotId" json:"snapshotId"`
 	Failures           []PromptResultDetail     `bson:"failures" json:"failures"`
 	SamplePasses       []PromptResultDetail     `bson:"samplePasses" json:"samplePasses"`
 	CategoryBreakdown  map[string]CategoryStats `bson:"categoryBreakdown" json:"categoryBreakdown"`

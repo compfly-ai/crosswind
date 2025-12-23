@@ -12,7 +12,6 @@ import (
 // EvalSession represents a session tracking row
 type EvalSession struct {
 	RunID           string     `ch:"run_id"`
-	OrgID           string     `ch:"org_id"`
 	AgentID         string     `ch:"agent_id"`
 	SessionID       string     `ch:"session_id"`
 	SessionStatus   string     `ch:"session_status"` // active | completed | reset | error
@@ -37,12 +36,12 @@ type EvalSessionsRepository struct {
 func (r *EvalSessionsRepository) Insert(ctx context.Context, session *EvalSession) error {
 	err := r.conn.Exec(ctx, fmt.Sprintf(`
 		INSERT INTO %s.eval_sessions (
-			run_id, org_id, agent_id, session_id, session_status,
+			run_id, agent_id, session_id, session_status,
 			prompts_executed, prompts_passed, prompts_failed,
 			reset_reason, error_message, started_at, ended_at, timestamp
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, r.database),
-		session.RunID, session.OrgID, session.AgentID, session.SessionID, session.SessionStatus,
+		session.RunID, session.AgentID, session.SessionID, session.SessionStatus,
 		session.PromptsExecuted, session.PromptsPassed, session.PromptsFailed,
 		session.ResetReason, session.ErrorMessage, session.StartedAt, session.EndedAt, session.Timestamp,
 	)
@@ -66,7 +65,7 @@ func (r *EvalSessionsRepository) InsertBatch(ctx context.Context, sessions []Eva
 
 	batch, err := r.conn.PrepareBatch(ctx, fmt.Sprintf(`
 		INSERT INTO %s.eval_sessions (
-			run_id, org_id, agent_id, session_id, session_status,
+			run_id, agent_id, session_id, session_status,
 			prompts_executed, prompts_passed, prompts_failed,
 			reset_reason, error_message, started_at, ended_at, timestamp
 		)
@@ -77,7 +76,7 @@ func (r *EvalSessionsRepository) InsertBatch(ctx context.Context, sessions []Eva
 
 	for _, s := range sessions {
 		err := batch.Append(
-			s.RunID, s.OrgID, s.AgentID, s.SessionID, s.SessionStatus,
+			s.RunID, s.AgentID, s.SessionID, s.SessionStatus,
 			s.PromptsExecuted, s.PromptsPassed, s.PromptsFailed,
 			s.ResetReason, s.ErrorMessage, s.StartedAt, s.EndedAt, s.Timestamp,
 		)
@@ -101,7 +100,7 @@ func (r *EvalSessionsRepository) InsertBatch(ctx context.Context, sessions []Eva
 func (r *EvalSessionsRepository) GetByRunID(ctx context.Context, runID string) ([]EvalSession, error) {
 	rows, err := r.conn.Query(ctx, fmt.Sprintf(`
 		SELECT
-			run_id, org_id, agent_id, session_id, session_status,
+			run_id, agent_id, session_id, session_status,
 			prompts_executed, prompts_passed, prompts_failed,
 			reset_reason, error_message, started_at, ended_at, timestamp
 		FROM %s.eval_sessions
@@ -117,7 +116,7 @@ func (r *EvalSessionsRepository) GetByRunID(ctx context.Context, runID string) (
 	for rows.Next() {
 		var s EvalSession
 		err := rows.Scan(
-			&s.RunID, &s.OrgID, &s.AgentID, &s.SessionID, &s.SessionStatus,
+			&s.RunID, &s.AgentID, &s.SessionID, &s.SessionStatus,
 			&s.PromptsExecuted, &s.PromptsPassed, &s.PromptsFailed,
 			&s.ResetReason, &s.ErrorMessage, &s.StartedAt, &s.EndedAt, &s.Timestamp,
 		)

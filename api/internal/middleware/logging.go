@@ -29,11 +29,6 @@ func Logger(logger *zap.Logger) gin.HandlerFunc {
 			zap.String("user-agent", c.Request.UserAgent()),
 		}
 
-		// Add org ID if available
-		if orgID := GetOrgID(c); orgID != "" {
-			fields = append(fields, zap.String("orgId", orgID))
-		}
-
 		// Add error if present
 		if len(c.Errors) > 0 {
 			fields = append(fields, zap.String("error", c.Errors.String()))

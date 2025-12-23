@@ -31,7 +31,6 @@ var (
 type EvalJob struct {
 	RunID                  string   `json:"runId"`
 	AgentID                string   `json:"agentId"`
-	SnapshotID             string   `json:"snapshotId"`
 	Mode                   string   `json:"mode"`
 	EvalType               string   `json:"evalType"`
 	DatasetIDs             []string `json:"datasetIds,omitempty"`
@@ -145,15 +144,15 @@ func (q *RedisQueue) GetProgress(ctx context.Context, runID string) (map[string]
 	return q.client.HGetAll(ctx, key).Result()
 }
 
-// SetRateLimitTokens sets the token count for rate limiting
-func (q *RedisQueue) SetRateLimitTokens(ctx context.Context, orgID, agentID string, tokens float64) error {
-	key := fmt.Sprintf("ratelimit:%s:%s:tokens", orgID, agentID)
+// SetRateLimitTokens sets the token count for rate limiting per agent
+func (q *RedisQueue) SetRateLimitTokens(ctx context.Context, agentID string, tokens float64) error {
+	key := fmt.Sprintf("ratelimit:%s:tokens", agentID)
 	return q.client.Set(ctx, key, tokens, 0).Err()
 }
 
-// GetRateLimitTokens gets the token count for rate limiting
-func (q *RedisQueue) GetRateLimitTokens(ctx context.Context, orgID, agentID string) (float64, error) {
-	key := fmt.Sprintf("ratelimit:%s:%s:tokens", orgID, agentID)
+// GetRateLimitTokens gets the token count for rate limiting per agent
+func (q *RedisQueue) GetRateLimitTokens(ctx context.Context, agentID string) (float64, error) {
+	key := fmt.Sprintf("ratelimit:%s:tokens", agentID)
 	return q.client.Get(ctx, key).Float64()
 }
 

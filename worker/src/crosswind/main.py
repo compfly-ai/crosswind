@@ -73,7 +73,6 @@ class Worker:
         """Process a single evaluation job."""
         run_id = job_data.get("runId")
         agent_id = job_data.get("agentId")
-        snapshot_id = job_data.get("snapshotId")
         mode = job_data.get("mode")
         eval_type = job_data.get("evalType", "red_team")
         scenario_set_ids = job_data.get("scenarioSetIds", [])
@@ -82,7 +81,6 @@ class Worker:
         log = logger.bind(
             run_id=run_id,
             agent_id=agent_id,
-            snapshot_id=snapshot_id,
             mode=mode,
             eval_type=eval_type,
             scenario_set_ids=scenario_set_ids,
@@ -97,10 +95,10 @@ class Worker:
                 {"$set": {"status": "running", "startedAt": datetime.now(timezone.utc)}},
             )
 
-            # Get agent configuration by snapshotId
-            agent = await self.db.agents.find_one({"agentId": agent_id, "snapshotId": snapshot_id})
+            # Get agent configuration by agentId
+            agent = await self.db.agents.find_one({"agentId": agent_id})
             if not agent:
-                raise ValueError(f"Agent not found: {agent_id} with snapshot {snapshot_id}")
+                raise ValueError(f"Agent not found: {agent_id}")
 
             # Create protocol adapter
             adapter = create_adapter(agent)
@@ -115,7 +113,6 @@ class Worker:
                 run_id=run_id,
                 mode=mode,
                 eval_type=eval_type,
-                snapshot_id=snapshot_id,
                 scenario_set_ids=scenario_set_ids,
                 include_built_in_datasets=include_built_in_datasets,
             )

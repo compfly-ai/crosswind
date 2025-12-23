@@ -86,24 +86,13 @@ func (h *AgentHandlers) List(c *gin.Context) {
 }
 
 // Get handles GET /v1/agents/:agentId
-// Required query param: ?snapshotId=xxx to get a specific version
 func (h *AgentHandlers) Get(c *gin.Context) {
 	agentID := c.Param("agentId")
-	snapshotID := c.Query("snapshotId")
 
-	if snapshotID == "" {
-		respondWithError(c, http.StatusBadRequest, "MISSING_SNAPSHOT_ID", "snapshotId query parameter is required", nil)
-		return
-	}
-
-	agent, err := h.services.Agent.Get(c.Request.Context(), agentID, snapshotID)
+	agent, err := h.services.Agent.Get(c.Request.Context(), agentID)
 	if err != nil {
 		if err == services.ErrAgentNotFound {
 			respondWithError(c, http.StatusNotFound, "AGENT_NOT_FOUND", "Agent not found", gin.H{"agentId": agentID})
-			return
-		}
-		if err == services.ErrSnapshotNotFound {
-			respondWithError(c, http.StatusNotFound, "SNAPSHOT_NOT_FOUND", "Agent snapshot not found", gin.H{"agentId": agentID, "snapshotId": snapshotID})
 			return
 		}
 		h.logger.Error("failed to get agent", zap.Error(err))
@@ -165,25 +154,14 @@ type AnalyzeAPIResponse struct {
 
 // AnalyzeAPI handles POST /v1/agents/:agentId/analyze
 // Uses GPT to probe and analyze the agent's API structure
-// Required query param: ?snapshotId=xxx to analyze a specific version
 func (h *AgentHandlers) AnalyzeAPI(c *gin.Context) {
 	agentID := c.Param("agentId")
-	snapshotID := c.Query("snapshotId")
 
-	if snapshotID == "" {
-		respondWithError(c, http.StatusBadRequest, "MISSING_SNAPSHOT_ID", "snapshotId query parameter is required", nil)
-		return
-	}
-
-	// Get the agent by snapshot
-	agent, err := h.services.Agent.Get(c.Request.Context(), agentID, snapshotID)
+	// Get the agent
+	agent, err := h.services.Agent.Get(c.Request.Context(), agentID)
 	if err != nil {
 		if err == services.ErrAgentNotFound {
 			respondWithError(c, http.StatusNotFound, "AGENT_NOT_FOUND", "Agent not found", gin.H{"agentId": agentID})
-			return
-		}
-		if err == services.ErrSnapshotNotFound {
-			respondWithError(c, http.StatusNotFound, "SNAPSHOT_NOT_FOUND", "Agent snapshot not found", gin.H{"agentId": agentID, "snapshotId": snapshotID})
 			return
 		}
 		h.logger.Error("failed to get agent", zap.Error(err))

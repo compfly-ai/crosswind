@@ -4085,7 +4085,6 @@ async def seed_dataset(
         # "scores_only" - only aggregate scores, no individual results
         "visibility": meta.visibility,
         "isShared": True,
-        "orgId": None,
         "isActive": True,
         "createdAt": datetime.utcnow(),
         "updatedAt": datetime.utcnow(),
@@ -4142,7 +4141,6 @@ async def create_indexes(db: Any) -> None:
     # datasets collection indexes
     await db.datasets.create_index([("datasetId", 1), ("version", 1)], unique=True)
     await db.datasets.create_index([("isShared", 1), ("isActive", 1), ("category", 1)])
-    await db.datasets.create_index([("orgId", 1), ("isActive", 1)])
 
     # datasetPrompts collection indexes
     await db.datasetPrompts.create_index(

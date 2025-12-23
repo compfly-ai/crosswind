@@ -25,7 +25,7 @@ func NewAgentsRepository(db *mongo.Database) *AgentsRepository {
 
 	indexes := []mongo.IndexModel{
 		{
-			Keys:    bson.D{{Key: "agentId", Value: 1}, {Key: "snapshotId", Value: 1}},
+			Keys:    bson.D{{Key: "agentId", Value: 1}},
 			Options: options.Index().SetUnique(true),
 		},
 		{
@@ -132,18 +132,4 @@ func (r *AgentsRepository) HardDelete(ctx context.Context, agentID string) error
 		"status":  models.AgentStatusDeleted,
 	})
 	return err
-}
-
-// FindBySnapshot finds an agent by agent ID and snapshot ID
-// Used for re-running evaluations against a specific agent version
-func (r *AgentsRepository) FindBySnapshot(ctx context.Context, agentID, snapshotID string) (*models.Agent, error) {
-	var agent models.Agent
-	err := r.collection.FindOne(ctx, bson.M{
-		"agentId":    agentID,
-		"snapshotId": snapshotID,
-	}).Decode(&agent)
-	if err != nil {
-		return nil, err
-	}
-	return &agent, nil
 }

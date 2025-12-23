@@ -40,7 +40,6 @@ class ContextProcessor:
     """Processes context documents to extract text content.
 
     Supports multiple concurrent instances via atomic MongoDB claims.
-    OSS version - no multi-tenancy (no orgId filtering).
     """
 
     def __init__(

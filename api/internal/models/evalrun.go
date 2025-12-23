@@ -8,11 +8,10 @@ import (
 
 // EvalRun represents an evaluation run against an agent
 type EvalRun struct {
-	ID         primitive.ObjectID `bson:"_id,omitempty" json:"-"`
-	RunID      string             `bson:"runId" json:"runId"`
-	AgentID    string             `bson:"agentId" json:"agentId"`
-	SnapshotID string             `bson:"snapshotId" json:"snapshotId"`
-	Mode       string             `bson:"mode" json:"mode"`
+	ID      primitive.ObjectID `bson:"_id,omitempty" json:"-"`
+	RunID   string             `bson:"runId" json:"runId"`
+	AgentID string             `bson:"agentId" json:"agentId"`
+	Mode    string             `bson:"mode" json:"mode"`
 	// EvalType: "red_team" for security testing, "trust" for quality/bias testing
 	EvalType             string                 `bson:"evalType" json:"evalType"`
 	Status               string                 `bson:"status" json:"status"`
@@ -436,10 +435,9 @@ const (
 
 // CreateEvalRunRequest represents the request body for creating an evaluation run
 type CreateEvalRunRequest struct {
-	SnapshotID string                `json:"snapshotId" binding:"required"`
-	Mode       string                `json:"mode" binding:"required,oneof=quick standard deep"`
-	EvalType   string                `json:"evalType" binding:"required,oneof=red_team trust general"`
-	Config     *EvalRunConfigRequest `json:"config,omitempty"`
+	Mode     string                `json:"mode" binding:"required,oneof=quick standard deep"`
+	EvalType string                `json:"evalType" binding:"required,oneof=red_team trust general"`
+	Config   *EvalRunConfigRequest `json:"config,omitempty"`
 }
 
 // Note: EvalType constants (EvalTypeRedTeam, EvalTypeTrust, EvalTypeGeneral) are defined in dataset.go
@@ -457,7 +455,6 @@ type EvalRunConfigRequest struct {
 type CreateEvalRunResponse struct {
 	RunID            string    `json:"runId"`
 	AgentID          string    `json:"agentId"`
-	SnapshotID       string    `json:"snapshotId"`
 	Mode             string    `json:"mode"`
 	EvalType         string    `json:"evalType"`
 	Status           string    `json:"status"`

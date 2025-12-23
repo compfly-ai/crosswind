@@ -16,9 +16,6 @@ type AgentRepository interface {
 	// FindByID finds an agent by agent ID.
 	FindByID(ctx context.Context, agentID string) (*models.Agent, error)
 
-	// FindBySnapshot finds an agent by agent ID and snapshot ID.
-	FindBySnapshot(ctx context.Context, agentID, snapshotID string) (*models.Agent, error)
-
 	// List lists agents with optional status filter and pagination.
 	List(ctx context.Context, status string, limit, offset int) ([]models.Agent, int64, error)
 

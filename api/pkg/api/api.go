@@ -219,7 +219,6 @@ var (
 	// Agent errors
 	ErrAgentNotFound            = services.ErrAgentNotFound
 	ErrAgentAlreadyExists       = services.ErrAgentAlreadyExists
-	ErrSnapshotNotFound         = services.ErrSnapshotNotFound
 	ErrInvalidProtocol          = services.ErrInvalidProtocol
 	ErrMissingBaseURL           = services.ErrMissingBaseURL
 	ErrMissingEndpoint          = services.ErrMissingEndpoint

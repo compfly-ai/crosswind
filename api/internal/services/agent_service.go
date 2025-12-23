@@ -9,7 +9,6 @@ import (
 	"github.com/compfly-ai/crosswind/api/internal/models"
 	"github.com/compfly-ai/crosswind/api/pkg/crypto"
 	"github.com/compfly-ai/crosswind/api/pkg/repository"
-	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/bson"
 	mongodriver "go.mongodb.org/mongo-driver/mongo"
 	"go.uber.org/zap"
@@ -102,7 +101,6 @@ func (s *AgentService) Create(ctx context.Context, req *models.CreateAgentReques
 
 	agent := &models.Agent{
 		AgentID:        req.AgentID,
-		SnapshotID:     uuid.New().String(),
 		Name:           req.Name,
 		Description:    req.Description,
 		Goal:           req.Goal,
@@ -141,10 +139,9 @@ func (s *AgentService) Create(ctx context.Context, req *models.CreateAgentReques
 }
 
 // analyzeAgentInBackground runs API analysis asynchronously after agent creation.
-// It preserves values from the parent context (like orgId for multi-tenancy) but
-// uses a fresh timeout since the HTTP request context may be cancelled.
+// It uses a fresh timeout since the HTTP request context may be cancelled.
 func (s *AgentService) analyzeAgentInBackground(parentCtx context.Context, agent *models.Agent) {
-	// Create a new context that inherits values from parent (like orgId) but not cancellation.
+	// Create a new context that inherits values from parent but not cancellation.
 	// This allows background work to continue after the HTTP request completes.
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(parentCtx), 2*time.Minute)
 	defer cancel()
@@ -187,12 +184,12 @@ func (s *AgentService) analyzeAgentInBackground(parentCtx context.Context, agent
 	}
 }
 
-// Get retrieves an agent by agentID and snapshotID
-func (s *AgentService) Get(ctx context.Context, agentID, snapshotID string) (*models.Agent, error) {
-	agent, err := s.agentRepo.FindBySnapshot(ctx, agentID, snapshotID)
+// Get retrieves an agent by agentID
+func (s *AgentService) Get(ctx context.Context, agentID string) (*models.Agent, error) {
+	agent, err := s.agentRepo.FindByID(ctx, agentID)
 	if err != nil {
 		if err == mongodriver.ErrNoDocuments {
-			return nil, ErrSnapshotNotFound
+			return nil, ErrAgentNotFound
 		}
 		return nil, err
 	}
@@ -234,7 +231,6 @@ func (s *AgentService) List(ctx context.Context, status string, limit, offset in
 
 		summaries[i] = models.AgentSummary{
 			AgentID:     agent.AgentID,
-			SnapshotID:  agent.SnapshotID,
 			Name:        agent.Name,
 			Industry:    agent.Industry,
 			Status:      agent.Status,
@@ -350,7 +346,7 @@ func (s *AgentService) Update(ctx context.Context, agentID string, req *models.U
 		}
 	}
 
-	return s.Get(ctx, agentID, existingAgent.SnapshotID)
+	return s.Get(ctx, agentID)
 }
 
 // Delete soft-deletes an agent

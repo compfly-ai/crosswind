@@ -129,7 +129,7 @@ paths:
     get:
       tags: [Agents]
       summary: List agents
-      description: List all registered agents for the organization
+      description: List all registered agents
       operationId: listAgents
       parameters:
         - name: status
@@ -405,15 +405,8 @@ paths:
     get:
       tags: [Agents]
       summary: Get agent
-      description: Get details of a specific agent version by snapshotId.
+      description: Get details of an agent by ID.
       operationId: getAgent
-      parameters:
-        - name: snapshotId
-          in: query
-          required: true
-          schema:
-            type: string
-          description: Snapshot ID to retrieve a specific agent version
       responses:
         '200':
           description: Agent details
@@ -459,7 +452,6 @@ paths:
   /agents/{agentId}/analyze:
     parameters:
       - $ref: '#/components/parameters/agentId'
-      - $ref: '#/components/parameters/snapshotId'
     post:
       tags: [Agents]
       summary: Analyze agent API
@@ -735,7 +727,7 @@ paths:
         ## Example Usage
 
         ```javascript
-        const eventSource = new EventSource('/v1/orgs/my-org/agents/my-agent/scenarios/scn_123/stream');
+        const eventSource = new EventSource('/v1/agents/my-agent/scenarios/scn_123/stream');
 
         eventSource.addEventListener('init', (e) => {
           const data = JSON.parse(e.data);
@@ -863,7 +855,7 @@ paths:
     get:
       tags: [Contexts]
       summary: List contexts
-      description: List all uploaded contexts for the organization
+      description: List all uploaded contexts
       operationId: listContexts
       parameters:
         - $ref: '#/components/parameters/limit'
@@ -1051,19 +1043,16 @@ paths:
               quickRedTeam:
                 summary: Quick red team smoke test
                 value:
-                  snapshotId: snap_abc123
                   mode: quick
                   evalType: red_team
               quickTrust:
                 summary: Quick trust evaluation
                 value:
-                  snapshotId: snap_abc123
                   mode: quick
                   evalType: trust
               standard:
                 summary: Standard evaluation with rate limit
                 value:
-                  snapshotId: snap_abc123
                   mode: standard
                   evalType: red_team
                   config:
@@ -1071,7 +1060,6 @@ paths:
               withScenarioSets:
                 summary: Evaluation with custom scenario sets
                 value:
-                  snapshotId: snap_abc123
                   mode: standard
                   evalType: red_team
                   config:
@@ -1079,7 +1067,6 @@ paths:
               selectDatasets:
                 summary: Select specific datasets
                 value:
-                  snapshotId: snap_abc123
                   mode: standard
                   evalType: red_team
                   config:
@@ -1088,7 +1075,6 @@ paths:
               combined:
                 summary: Combine datasets and scenario sets
                 value:
-                  snapshotId: snap_abc123
                   mode: standard
                   evalType: red_team
                   config:
@@ -1230,8 +1216,7 @@ paths:
       summary: Rerun evaluation
       description: |
         Create a new evaluation run based on a previous run's configuration.
-        Uses the agent snapshot from the original run to ensure reproducibility.
-        The new run will use the same evaluation mode, type, and configuration.
+        The new run will use the same agent, evaluation mode, type, and configuration.
       operationId: rerunEval
       responses:
         '202':
@@ -1241,7 +1226,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/CreateEvalResponse'
         '404':
-          description: Evaluation run or agent snapshot not found
+          description: Evaluation run or agent not found
           content:
             application/json:
               schema:
@@ -1356,13 +1341,6 @@ components:
         type: integer
         default: 0
       description: Offset for pagination
-    snapshotId:
-      name: snapshotId
-      in: query
-      required: true
-      schema:
-        type: string
-      description: Snapshot ID of the agent version to use
 
   responses:
     BadRequest:
@@ -1740,9 +1718,6 @@ components:
       properties:
         agentId:
           type: string
-        snapshotId:
-          type: string
-          description: Unique identifier for this agent version/snapshot
         name:
           type: string
         industry:
@@ -1761,15 +1736,8 @@ components:
     # ==========================================================================
     CreateEvalRequest:
       type: object
-      required: [snapshotId, mode, evalType]
+      required: [mode, evalType]
       properties:
-        snapshotId:
-          type: string
-          description: |
-            Snapshot ID of the agent version to evaluate. This is returned when you
-            register the agent and ensures reproducible evaluations against a specific
-            agent configuration.
-          example: abc-123-def-456
         mode:
           type: string
           enum: [quick, standard, deep]
@@ -1846,9 +1814,6 @@ components:
           type: string
         agentId:
           type: string
-        snapshotId:
-          type: string
-          description: Agent snapshot version used for this evaluation
         mode:
           type: string
           enum: [quick, standard, deep]

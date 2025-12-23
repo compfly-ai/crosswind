@@ -72,11 +72,11 @@ func (s *EvalService) Create(ctx context.Context, agentID string, req *models.Cr
 		return nil, ErrInvalidEvalMode
 	}
 
-	// Get agent by specific snapshot - client must provide the snapshotId they received at registration
-	agent, err := s.agentRepo.FindBySnapshot(ctx, agentID, req.SnapshotID)
+	// Get agent by ID
+	agent, err := s.agentRepo.FindByID(ctx, agentID)
 	if err != nil {
 		if err == mongodriver.ErrNoDocuments {
-			return nil, ErrSnapshotNotFound
+			return nil, ErrAgentNotFound
 		}
 		return nil, err
 	}
@@ -86,7 +86,7 @@ func (s *EvalService) Create(ctx context.Context, agentID string, req *models.Cr
 		return nil, ErrAgentNotFound
 	}
 
-	// Check if there's already an active run
+	// Check if there's already an active run for this agent
 	hasActive, err := s.evalRunRepo.HasActiveRun(ctx, agentID)
 	if err != nil {
 		return nil, err
@@ -176,10 +176,9 @@ func (s *EvalService) Create(ctx context.Context, agentID string, req *models.Cr
 
 	// Create eval run
 	evalRun := &models.EvalRun{
-		RunID:      runID,
-		AgentID:    agentID,
-		SnapshotID: agent.SnapshotID,
-		Mode:       req.Mode,
+		RunID:   runID,
+		AgentID: agentID,
+		Mode:    req.Mode,
 		EvalType: req.EvalType,
 		Status:   models.EvalStatusPending,
 		Config: models.EvalRunConfig{
@@ -212,7 +211,6 @@ func (s *EvalService) Create(ctx context.Context, agentID string, req *models.Cr
 	job := queue.EvalJob{
 		RunID:                  runID,
 		AgentID:                agentID,
-		SnapshotID:             agent.SnapshotID,
 		Mode:                   req.Mode,
 		EvalType:               req.EvalType,
 		ScenarioSetIDs:         scenarioSetIDs,
@@ -228,7 +226,6 @@ func (s *EvalService) Create(ctx context.Context, agentID string, req *models.Cr
 	return &models.CreateEvalRunResponse{
 		RunID:            runID,
 		AgentID:          agentID,
-		SnapshotID:       agent.SnapshotID,
 		Mode:             req.Mode,
 		EvalType:         req.EvalType,
 		Status:           models.EvalStatusPending,
@@ -364,7 +361,6 @@ func (s *EvalService) Cancel(ctx context.Context, runID string) (*models.EvalRun
 }
 
 // Rerun creates a new evaluation run based on a previous run
-// It uses the snapshotId from the original run to load the exact agent version
 func (s *EvalService) Rerun(ctx context.Context, runID string) (*models.CreateEvalRunResponse, error) {
 	s.logger.Info("starting evaluation rerun",
 		zap.String("originalRunId", runID))
@@ -383,26 +379,25 @@ func (s *EvalService) Rerun(ctx context.Context, runID string) (*models.CreateEv
 		return nil, err
 	}
 
-	// Load the agent by agentId and snapshotId (the exact version from the original run)
-	agent, err := s.agentRepo.FindBySnapshot(ctx, originalRun.AgentID, originalRun.SnapshotID)
+	// Load the agent by ID
+	agent, err := s.agentRepo.FindByID(ctx, originalRun.AgentID)
 	if err != nil {
 		if err == mongodriver.ErrNoDocuments {
-			s.logger.Error("agent snapshot not found - may have been deleted",
-				zap.String("snapshotId", originalRun.SnapshotID))
-			return nil, ErrSnapshotNotFound
+			s.logger.Error("agent not found",
+				zap.String("agentId", originalRun.AgentID))
+			return nil, ErrAgentNotFound
 		}
-		s.logger.Error("failed to find agent by snapshot",
-			zap.String("snapshotId", originalRun.SnapshotID),
+		s.logger.Error("failed to find agent",
+			zap.String("agentId", originalRun.AgentID),
 			zap.Error(err))
 		return nil, err
 	}
 
 	// Check if agent is active (not deleted)
 	if agent.Status == models.AgentStatusDeleted {
-		s.logger.Warn("cannot rerun eval - agent snapshot is deleted",
-			zap.String("snapshotId", originalRun.SnapshotID),
+		s.logger.Warn("cannot rerun eval - agent is deleted",
 			zap.String("agentId", agent.AgentID))
-		return nil, fmt.Errorf("agent snapshot has been deleted")
+		return nil, fmt.Errorf("agent has been deleted")
 	}
 
 	// Check if there's already an active run for this agent
@@ -452,7 +447,6 @@ func (s *EvalService) Rerun(ctx context.Context, runID string) (*models.CreateEv
 	evalRun := &models.EvalRun{
 		RunID:            newRunID,
 		AgentID:          agent.AgentID,
-		SnapshotID:       originalRun.SnapshotID, // Use the same snapshot
 		Mode:             originalRun.Mode,
 		EvalType:         originalRun.EvalType,
 		Status:           models.EvalStatusPending,
@@ -476,7 +470,6 @@ func (s *EvalService) Rerun(ctx context.Context, runID string) (*models.CreateEv
 	job := queue.EvalJob{
 		RunID:          newRunID,
 		AgentID:        agent.AgentID,
-		SnapshotID:     originalRun.SnapshotID,
 		Mode:           originalRun.Mode,
 		EvalType:       originalRun.EvalType,
 		ScenarioSetIDs: scenarioSetIDs,
@@ -495,14 +488,12 @@ func (s *EvalService) Rerun(ctx context.Context, runID string) (*models.CreateEv
 		zap.String("newRunId", newRunID),
 		zap.String("originalRunId", runID),
 		zap.String("agentId", agent.AgentID),
-		zap.String("snapshotId", originalRun.SnapshotID),
 		zap.String("mode", originalRun.Mode),
 		zap.String("evalType", originalRun.EvalType))
 
 	return &models.CreateEvalRunResponse{
 		RunID:            newRunID,
 		AgentID:          agent.AgentID,
-		SnapshotID:       originalRun.SnapshotID,
 		Mode:             originalRun.Mode,
 		EvalType:         originalRun.EvalType,
 		Status:           models.EvalStatusPending,

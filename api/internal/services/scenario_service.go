@@ -61,8 +61,23 @@ func (s *ScenarioService) SetContextService(ctxSvc *ContextService) {
 	s.contextSvc = ctxSvc
 }
 
-// Generate creates a new scenario set and starts generation
+// Generate creates a scenario set and executes generation.
+// This is a convenience method that combines CreateScenarioSet + ExecuteGeneration.
 func (s *ScenarioService) Generate(ctx context.Context, agentID string, req *models.GenerateScenariosRequest) (*models.GenerateScenariosResponse, error) {
+	resp, err := s.CreateScenarioSet(ctx, agentID, req)
+	if err != nil {
+		return nil, err
+	}
+
+	// Execute generation (this does the actual LLM work)
+	s.ExecuteGeneration(ctx, resp.ScenarioSetID)
+
+	return resp, nil
+}
+
+// CreateScenarioSet creates a new scenario set record and returns immediately.
+// The set is created in "pending" status. Call ExecuteGeneration to run the actual generation.
+func (s *ScenarioService) CreateScenarioSet(ctx context.Context, agentID string, req *models.GenerateScenariosRequest) (*models.GenerateScenariosResponse, error) {
 	// Check if agent exists
 	agent, err := s.agents.FindByID(ctx, agentID)
 	if err != nil {
@@ -115,7 +130,7 @@ func (s *ScenarioService) Generate(ctx context.Context, agentID string, req *mod
 	}
 
 	// Create scenario set record with evalType and progress tracking
-	// Start with "pending" status so SSE can show the planning transition
+	// Start with "pending" status - caller will invoke ExecuteGeneration
 	scenarioSet := &models.ScenarioSet{
 		SetID:   setID,
 		AgentID: agentID,
@@ -146,9 +161,6 @@ func (s *ScenarioService) Generate(ctx context.Context, agentID string, req *mod
 		return nil, err
 	}
 
-	// Start generation in background
-	go s.generateAsync(context.Background(), setID, agent, &scenarioSet.Config)
-
 	// Estimate time based on count (add time if context is large)
 	estimatedSeconds := 10 + (count / 5)
 	if len(contextContent) > 10000 {
@@ -157,9 +169,36 @@ func (s *ScenarioService) Generate(ctx context.Context, agentID string, req *mod
 
 	return &models.GenerateScenariosResponse{
 		ScenarioSetID:    setID,
-		Status:           models.ScenarioStatusGenerating,
+		Status:           models.ScenarioStatusPending,
 		EstimatedSeconds: estimatedSeconds,
 	}, nil
+}
+
+// ExecuteGeneration runs the LLM generation for a scenario set.
+// The set must already exist (created via CreateScenarioSet).
+func (s *ScenarioService) ExecuteGeneration(ctx context.Context, setID string) {
+	// Load the scenario set to get config and agent info
+	set, err := s.scenarios.FindBySetID(ctx, setID)
+	if err != nil {
+		s.logger.Error("failed to load scenario set for generation",
+			zap.String("setId", setID),
+			zap.Error(err),
+		)
+		return
+	}
+
+	agent, err := s.agents.FindByID(ctx, set.AgentID)
+	if err != nil {
+		s.logger.Error("failed to load agent for generation",
+			zap.String("setId", setID),
+			zap.String("agentId", set.AgentID),
+			zap.Error(err),
+		)
+		s.scenarios.UpdateStatusWithError(ctx, setID, models.ScenarioStatusFailed, "agent not found")
+		return
+	}
+
+	s.runGeneration(ctx, setID, agent, &set.Config)
 }
 
 // fetchContextContent retrieves and filters context document content
@@ -249,8 +288,9 @@ func joinStrings(strs []string, sep string) string {
 	return result
 }
 
-// generateAsync runs scenario generation in the background with planning
-func (s *ScenarioService) generateAsync(ctx context.Context, setID string, agent *models.Agent, config *models.ScenarioGenConfig) {
+// runGeneration runs scenario generation with planning.
+// This is a synchronous operation - the caller decides whether to run async.
+func (s *ScenarioService) runGeneration(ctx context.Context, setID string, agent *models.Agent, config *models.ScenarioGenConfig) {
 	logger := s.logger.With(
 		zap.String("setId", setID),
 		zap.String("agentId", agent.AgentID),

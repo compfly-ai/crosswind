@@ -8,11 +8,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const (
-	// ContextKeyOrgID is the key used to store the org ID in the context
-	ContextKeyOrgID = "orgId"
-)
-
 // AuthConfig holds configuration for the auth middleware
 type AuthConfig struct {
 	APIKey string
@@ -69,15 +64,6 @@ func Auth(authCfg *AuthConfig) gin.HandlerFunc {
 
 		c.Next()
 	}
-}
-
-// GetOrgID retrieves the org ID from the context
-func GetOrgID(c *gin.Context) string {
-	orgID, _ := c.Get(ContextKeyOrgID)
-	if orgID == nil {
-		return ""
-	}
-	return orgID.(string)
 }
 
 // BasicAuth returns a middleware for HTTP Basic Authentication

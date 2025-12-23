@@ -10,7 +10,6 @@ import (
 type Agent struct {
 	ID                     primitive.ObjectID      `bson:"_id,omitempty" json:"-"`
 	AgentID                string                  `bson:"agentId" json:"agentId"`
-	SnapshotID             string                  `bson:"snapshotId" json:"snapshotId"`
 	Name                   string                  `bson:"name" json:"name"`
 	Description            string                  `bson:"description" json:"description"`
 	Goal                   string                  `bson:"goal" json:"goal"`
@@ -259,7 +258,6 @@ const (
 )
 
 // CreateAgentRequest represents the request body for creating an agent
-// Note: OrgID comes from URL path parameter, not request body
 type CreateAgentRequest struct {
 	AgentID              string             `json:"agentId" binding:"required"`
 	Name                 string             `json:"name" binding:"required"`
@@ -300,7 +298,6 @@ type AgentListResponse struct {
 // AgentSummary represents a summarized view of an agent for listings
 type AgentSummary struct {
 	AgentID     string     `json:"agentId"`
-	SnapshotID  string     `json:"snapshotId"`
 	Name        string     `json:"name"`
 	Industry    string     `json:"industry"`
 	Status      string     `json:"status"`

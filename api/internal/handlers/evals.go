@@ -40,8 +40,6 @@ func (h *EvalHandlers) Create(c *gin.Context) {
 		switch err {
 		case services.ErrAgentNotFound:
 			respondWithError(c, http.StatusNotFound, "AGENT_NOT_FOUND", "Agent not found", gin.H{"agentId": agentID})
-		case services.ErrSnapshotNotFound:
-			respondWithError(c, http.StatusNotFound, "SNAPSHOT_NOT_FOUND", "Agent snapshot not found", gin.H{"agentId": agentID, "snapshotId": req.SnapshotID})
 		case services.ErrEvalAlreadyRunning:
 			respondWithError(c, http.StatusConflict, "EVAL_ALREADY_RUNNING", "Agent already has an active evaluation run", nil)
 		case services.ErrInvalidEvalMode:
@@ -148,7 +146,7 @@ func (h *EvalHandlers) Cancel(c *gin.Context) {
 }
 
 // Rerun handles POST /v1/evals/:runId/rerun
-// Creates a new evaluation run based on a previous run's configuration and agent snapshot
+// Creates a new evaluation run based on a previous run's configuration
 func (h *EvalHandlers) Rerun(c *gin.Context) {
 	runID := c.Param("runId")
 
@@ -160,8 +158,8 @@ func (h *EvalHandlers) Rerun(c *gin.Context) {
 		switch err {
 		case services.ErrEvalRunNotFound:
 			respondWithError(c, http.StatusNotFound, "EVAL_RUN_NOT_FOUND", "Evaluation run not found", gin.H{"runId": runID})
-		case services.ErrSnapshotNotFound:
-			respondWithError(c, http.StatusNotFound, "SNAPSHOT_NOT_FOUND", "Agent snapshot no longer exists", gin.H{"runId": runID})
+		case services.ErrAgentNotFound:
+			respondWithError(c, http.StatusNotFound, "AGENT_NOT_FOUND", "Agent no longer exists", gin.H{"runId": runID})
 		case services.ErrEvalAlreadyRunning:
 			respondWithError(c, http.StatusConflict, "EVAL_ALREADY_RUNNING", "Agent already has an active evaluation run", nil)
 		default:
@@ -170,7 +168,7 @@ func (h *EvalHandlers) Rerun(c *gin.Context) {
 				zap.Error(err))
 			// Return user-facing errors as bad request, others as internal error
 			errMsg := err.Error()
-			if strings.Contains(errMsg, "snapshot") || strings.Contains(errMsg, "deleted") || strings.Contains(errMsg, "cannot be rerun") {
+			if strings.Contains(errMsg, "deleted") || strings.Contains(errMsg, "cannot be rerun") {
 				respondWithError(c, http.StatusBadRequest, "RERUN_FAILED", errMsg, nil)
 			} else {
 				respondWithError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to rerun evaluation", nil)

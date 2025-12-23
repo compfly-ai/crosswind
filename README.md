@@ -47,7 +47,7 @@ curl http://localhost:8080/health
 export API_KEY="your-api-key"  # From .env
 
 # 1. Register your agent
-curl -X POST http://localhost:8080/v1/orgs/default/agents \
+curl -X POST http://localhost:8080/v1/agents \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -67,14 +67,14 @@ curl -X POST http://localhost:8080/v1/orgs/default/agents \
 # Returns: {"id": "agent_abc123", ...}
 
 # 2. Run a quick security eval (~200 prompts)
-curl -X POST http://localhost:8080/v1/orgs/default/agents/agent_abc123/evals \
+curl -X POST http://localhost:8080/v1/agents/agent_abc123/evals \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"mode": "quick", "evalType": "red_team"}'
 # Returns: {"runId": "run_xyz789", ...}
 
 # 3. Check results
-curl http://localhost:8080/v1/orgs/default/evals/run_xyz789/results \
+curl http://localhost:8080/v1/evals/run_xyz789/results \
   -H "Authorization: Bearer $API_KEY"
 ```
 
@@ -159,13 +159,13 @@ When you register an agent with its capabilities (tools like Salesforce or Slack
 
 ```bash
 # Upload your agent's context (product docs, policies, etc.)
-curl -X POST http://localhost:8080/v1/orgs/default/contexts \
+curl -X POST http://localhost:8080/v1/contexts \
   -H "Authorization: Bearer $API_KEY" \
   -F "files=@product-catalog.pdf" \
   -F "files=@return-policy.docx"
 
 # Generate scenarios targeting your agent's capabilities
-curl -X POST http://localhost:8080/v1/orgs/default/agents/{agentId}/scenarios/generate \
+curl -X POST http://localhost:8080/v1/agents/{agentId}/scenarios/generate \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"contextId": "ctx_123", "count": 50}'

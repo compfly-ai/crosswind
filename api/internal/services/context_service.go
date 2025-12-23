@@ -46,7 +46,8 @@ func NewContextService(repos *mongo.Repositories, gcs *storage.GCSClient, enviro
 	}
 }
 
-// Create creates a new context with uploaded files
+// Create creates a new context with uploaded files.
+// Files are uploaded synchronously - the caller can wrap in a goroutine if async is desired.
 func (s *ContextService) Create(ctx context.Context, name, description string, files []*multipart.FileHeader) (*models.Context, error) {
 	if len(files) == 0 {
 		return nil, ErrNoFilesProvided
@@ -97,25 +98,27 @@ func (s *ContextService) Create(ctx context.Context, name, description string, f
 		return nil, fmt.Errorf("failed to create context: %w", err)
 	}
 
-	// Upload files to GCS in background
-	go s.uploadFilesInBackground(contextID, files)
+	// Upload files synchronously
+	if err := s.uploadFiles(ctx, contextID, files); err != nil {
+		return nil, err
+	}
 
-	return ctxDoc, nil
+	// Return updated context with final status
+	return s.repos.Contexts.FindByID(ctx, contextID)
 }
 
 // Text-based content types that can be processed directly without Python worker
 var textBasedContentTypes = map[string]bool{
-	"text/plain":      true,
-	"text/markdown":   true,
-	"text/x-markdown": true,
-	"text/csv":        true,
+	"text/plain":       true,
+	"text/markdown":    true,
+	"text/x-markdown":  true,
+	"text/csv":         true,
 	"application/json": true,
 }
 
-// uploadFilesInBackground uploads files to GCS and updates status
-func (s *ContextService) uploadFilesInBackground(contextID string, files []*multipart.FileHeader) {
-	ctx := context.Background()
-
+// uploadFiles uploads files to storage and updates status.
+// This is a synchronous operation - the caller decides whether to run async.
+func (s *ContextService) uploadFiles(ctx context.Context, contextID string, files []*multipart.FileHeader) error {
 	var successCount, failCount, readyCount int
 
 	for _, fh := range files {
@@ -155,15 +158,15 @@ func (s *ContextService) uploadFilesInBackground(contextID string, files []*mult
 				continue
 			}
 			textContent = string(content)
-			// Reset file reader for GCS upload
+			// Reset file reader for storage upload
 			file.Close()
 			file, _ = fh.Open()
 		}
 
-		// Upload to GCS
+		// Upload to storage
 		if err := s.gcs.UploadFile(ctx, objectName, file, contentType); err != nil {
 			file.Close()
-			s.logger.Error("failed to upload file to GCS",
+			s.logger.Error("failed to upload file to storage",
 				zap.String("contextId", contextID),
 				zap.String("file", fh.Filename),
 				zap.Error(err),
@@ -189,7 +192,7 @@ func (s *ContextService) uploadFilesInBackground(contextID string, files []*mult
 				zap.Int("chars", len(textContent)),
 			)
 		} else {
-			// Binary files (PDF, Excel, etc.) need Python worker processing
+			// Binary files (PDF, Excel, etc.) need worker processing
 			s.repos.Contexts.UpdateFileStatus(ctx, contextID, fh.Filename, models.FileStatusProcessing, nil)
 			s.logger.Info("uploaded binary file to storage, awaiting worker processing",
 				zap.String("contextId", contextID),
@@ -203,6 +206,7 @@ func (s *ContextService) uploadFilesInBackground(contextID string, files []*mult
 	// Update context status based on results
 	if failCount == len(files) {
 		s.repos.Contexts.UpdateStatus(ctx, contextID, models.ContextStatusFailed, "all files failed to upload")
+		return fmt.Errorf("all files failed to upload")
 	} else if readyCount == successCount {
 		// All files are text-based and processed - context is ready
 		s.repos.Contexts.UpdateStatus(ctx, contextID, models.ContextStatusReady, "")
@@ -211,7 +215,7 @@ func (s *ContextService) uploadFilesInBackground(contextID string, files []*mult
 			zap.Int("files", readyCount),
 		)
 	} else {
-		// Some files need Python worker processing
+		// Some files need worker processing
 		s.logger.Info("context files uploaded, some awaiting worker processing",
 			zap.String("contextId", contextID),
 			zap.Int("ready", readyCount),
@@ -219,6 +223,8 @@ func (s *ContextService) uploadFilesInBackground(contextID string, files []*mult
 			zap.Int("failed", failCount),
 		)
 	}
+
+	return nil
 }
 
 // Get retrieves a context by ID
@@ -230,7 +236,7 @@ func (s *ContextService) Get(ctx context.Context, contextID string) (*models.Con
 	return ctxDoc, nil
 }
 
-// List lists contexts for an organization
+// List lists contexts
 func (s *ContextService) List(ctx context.Context, limit, offset int) (*models.ContextListResponse, error) {
 	contexts, total, err := s.repos.Contexts.List(ctx, limit, offset)
 	if err != nil {
@@ -345,7 +351,8 @@ func (s *ContextService) GetContextsForScenarioGeneration(ctx context.Context, c
 	return contexts, nil
 }
 
-// AddFiles adds new files to an existing context
+// AddFiles adds new files to an existing context.
+// Files are uploaded synchronously - the caller can wrap in a goroutine if async is desired.
 func (s *ContextService) AddFiles(ctx context.Context, contextID string, files []*multipart.FileHeader) (*models.Context, error) {
 	if len(files) == 0 {
 		return nil, ErrNoFilesProvided
@@ -401,10 +408,12 @@ func (s *ContextService) AddFiles(ctx context.Context, contextID string, files [
 		return nil, fmt.Errorf("failed to add files: %w", err)
 	}
 
-	// Upload files to GCS in background
-	go s.uploadFilesInBackground(contextID, files)
+	// Upload files synchronously
+	if err := s.uploadFiles(ctx, contextID, files); err != nil {
+		return nil, err
+	}
 
-	// Return updated context
+	// Return updated context with final status
 	return s.repos.Contexts.FindByID(ctx, contextID)
 }
 

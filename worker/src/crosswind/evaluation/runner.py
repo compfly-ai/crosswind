@@ -65,7 +65,6 @@ class EvalRunner:
         run_id: str,
         mode: str,
         eval_type: str = "red_team",
-        snapshot_id: str | None = None,
         scenario_set_ids: list[str] | None = None,
         include_built_in_datasets: bool = False,
     ) -> None:
@@ -80,7 +79,6 @@ class EvalRunner:
             run_id: Evaluation run ID
             mode: Evaluation mode (quick, standard, deep)
             eval_type: Evaluation type (red_team or trust)
-            snapshot_id: Snapshot ID of the agent version being evaluated
             scenario_set_ids: List of scenario set IDs to use
             include_built_in_datasets: Whether to include built-in datasets (default false)
         """
@@ -92,7 +90,6 @@ class EvalRunner:
         self.run_id = run_id
         self.mode = mode
         self.eval_type = eval_type
-        self.snapshot_id = snapshot_id
         self.scenario_set_ids = scenario_set_ids or []
         self.include_built_in_datasets = include_built_in_datasets
         self._start_time: datetime | None = None
@@ -832,7 +829,6 @@ class EvalRunner:
                 "$set": {
                     "runId": self.run_id,
                     "agentId": self.agent["agentId"],
-                    "snapshotId": self.snapshot_id,
                     "failures": [],
                     "errors": [],
                     "samplePasses": [],
