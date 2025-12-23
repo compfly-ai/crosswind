@@ -25,4 +25,4 @@ RUN mkdir -p /data
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
-CMD ["uv", "run", "python", "-m", "agent_eval_core.main"]
+CMD ["uv", "run", "python", "-m", "crosswind.main"]

@@ -2,7 +2,7 @@
 
 import asyncio
 
-from context_processor_core.context.processor import main
+from crosswind_context.context.processor import main
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -28,4 +28,4 @@ RUN mkdir -p /data
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
-CMD ["uv", "run", "python", "-m", "context_processor_core.context.processor"]
+CMD ["uv", "run", "python", "-m", "crosswind_context.context.processor"]

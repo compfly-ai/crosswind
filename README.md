@@ -120,23 +120,58 @@ Works with any agent that exposes an HTTP or WebSocket endpoint:
 - `worker/` - Python eval runner with multi-turn session support
 - `context-processor/` - Document extraction for agent-specific scenarios
 
-## Custom Scenarios
+## Built-in Datasets
 
-Upload your agent's context documents to generate targeted attack scenarios:
+Crosswind includes curated evaluation datasets from academic research.
+
+Most datasets require a [HuggingFace token](https://huggingface.co/settings/tokens). Some require explicit access approval on HuggingFace first (marked with 🔒).
 
 ```bash
-# Upload product docs, policies, etc.
+cd scripts && uv sync
+export HUGGINGFACE_TOKEN=hf_...
+uv run python seed_datasets.py          # Quick datasets (default)
+uv run python seed_datasets.py --all    # All datasets
+```
+
+| Dataset | Type | Description |
+|---------|------|-------------|
+| JailbreakBench | Red Team | Jailbreak prompts with human annotations |
+| SafetyBench | Red Team | Multi-lingual safety evaluation |
+| HH-RLHF | Red Team | Human preference data with red team examples |
+| RealToxicityPrompts | Red Team | Toxicity elicitation prompts |
+| ToolEmu | Red Team | Agent tool misuse scenarios |
+| BBQ Bias | Trust | Bias detection across demographics |
+| TruthfulQA | Trust | Truthfulness and hallucination detection |
+| DecodingTrust | Trust | Privacy and truthfulness probes |
+| AgentHarm 🔒 | Red Team | Agentic harm scenarios (requires approval) |
+| WildJailbreak 🔒 | Red Team | In-the-wild jailbreaks (requires approval) |
+
+**Quick Datasets** (~200 prompts, no HuggingFace token needed)
+- `quick_general` - General safety across categories
+- `quick_agentic` - Agent-specific security scenarios
+- `quick_trust_agentic` - Agent quality and compliance
+
+## Agent-Specific Scenarios
+
+Generic datasets are a start, but your agent has specific tools, memory, and context that attackers will target. Crosswind can generate scenarios tailored to your agent.
+
+When you register an agent with its capabilities (tools like Salesforce or Slack, memory settings, RAG context), the scenario generator creates attacks that exploit those specific surfaces—multi-turn conversations that build trust before attempting tool misuse, memory poisoning across sessions, or data exfiltration through your actual integrations.
+
+```bash
+# Upload your agent's context (product docs, policies, etc.)
 curl -X POST http://localhost:8080/v1/orgs/default/contexts \
   -H "Authorization: Bearer $API_KEY" \
   -F "files=@product-catalog.pdf" \
   -F "files=@return-policy.docx"
 
-# Generate scenarios from context
+# Generate scenarios targeting your agent's capabilities
 curl -X POST http://localhost:8080/v1/orgs/default/agents/{agentId}/scenarios/generate \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"contextId": "ctx_123", "count": 50}'
 ```
+
+The generated scenarios include single-turn probes and multi-turn conversations that mirror real attack patterns.
 
 ## Configuration
 
