@@ -1,0 +1,47 @@
+# Extension file for ClickHouse analytics support
+# Usage: docker compose -f docker-compose.yml -f docker-compose.analytics.yml up
+
+services:
+  api:
+    environment:
+      - CLICKHOUSE_ENABLED=true
+      - CLICKHOUSE_HOST=clickhouse:9000
+      - CLICKHOUSE_DATABASE=agent_eval
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-}
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+
+  worker:
+    environment:
+      - CLICKHOUSE_ENABLED=true
+      - CLICKHOUSE_HOST=clickhouse:9000
+      - CLICKHOUSE_DATABASE=agent_eval
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-}
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24-alpine
+    ports:
+      - "8123:8123"  # HTTP interface
+      - "9000:9000"  # Native protocol
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./clickhouse-config.xml:/etc/clickhouse-server/config.d/custom.xml:ro
+    environment:
+      - CLICKHOUSE_DB=agent_eval
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  clickhouse_data:

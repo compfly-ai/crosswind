@@ -1,0 +1,3450 @@
+openapi: 3.0.3
+info:
+  title: Agent Eval API
+  description: |
+    AI Agent Safety Evaluation Platform API.
+
+    This API allows you to:
+    - Register AI agents for evaluation
+    - Run safety evaluations against your agents (red_team and trust)
+    - Evaluate agentic AI systems with tool access
+    - View detailed results, ASR metrics, and recommendations
+
+    ## Authentication
+
+    All endpoints require authentication via:
+    - **Bearer Token**: Pass `Authorization: Bearer <api_key>` header
+
+    ## Evaluation Types
+
+    | Type | Purpose | Tests |
+    |------|---------|-------|
+    | red_team | Security testing | Jailbreaks, injection attacks, data exfiltration |
+    | trust | Quality testing | Hallucination, bias, over-refusal |
+
+    ## Evaluation Modes
+
+    | Mode | Duration | Prompts | Use Case |
+    |------|----------|---------|----------|
+    | quick | ~5 min | ~100 | Smoke test, CI/CD |
+    | standard | ~30 min | ~2,000 | Regular testing |
+    | deep | ~2+ hrs | ~5,000+ | Comprehensive audit |
+
+    ## Agentic AI Evaluation
+
+    For AI agents with tool access (Salesforce, Jira, Slack, etc.), we provide:
+    - **ASR Metrics**: Attack Success Rate (full/partial/blocked)
+    - **Multi-turn Attack Detection**: Escalating conversation attacks that build trust before exploitation
+    - **Memory/Context Attacks**: Tests for RAG poisoning and context manipulation
+    - **Tool-aware Scenarios**: Custom scenarios targeting specific integrations
+    - **Framework Mappings**: Optional classification to MAESTRO (T1-T8), OWASP ASI, and other frameworks
+
+    ## Agentic Attack Categories
+
+    | Focus Area | Description | Attack Pattern |
+    |------------|-------------|----------------|
+    | memory_poisoning | Corrupt agent memory/RAG for future exploitation | Multi-turn context injection |
+    | tool_chaining | Combine tool outputs for unauthorized actions | Tool A → Tool B abuse |
+    | trust_exploitation | Build trust across turns, then exploit | Gradual escalation |
+    | goal_hijacking | Redirect agent objectives via embedded instructions | Context manipulation |
+    | data_exfiltration | Extract sensitive data through tools | Social engineering + tools |
+    | privilege_escalation | Access beyond authorized scope | Confused deputy attacks |
+
+    ## Threat Framework Support
+
+    Scenarios can be mapped to multiple security frameworks:
+
+    **MAESTRO (T1-T8)**: Memory poisoning, tool misuse, privilege escalation, etc.
+
+    **OWASP Agentic AI Top 10**: Goal hijack, tool exploitation, identity abuse, etc.
+
+    **OWASP LLM Top 10**: Prompt injection, insecure output handling, etc.
+
+    ## Quick Start
+
+    1. Register your agent with `POST /agents`
+    2. Start an evaluation with `POST /agents/{agentId}/evals`
+    3. Poll for status with `GET /evals/{runId}`
+    4. Get results with `GET /evals/{runId}/results`
+
+  version: 1.0.0
+  contact:
+    name: Agent Eval Team
+  license:
+    name: Proprietary
+
+servers:
+  - url: http://localhost:8080/v1
+    description: Local development (Docker)
+  - url: http://localhost:8877/v1
+    description: Local development (native)
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Agents
+    description: Agent registration and management
+  - name: Evaluations
+    description: Running and monitoring evaluations
+  - name: Scenarios
+    description: Custom scenario generation for targeted testing
+  - name: Contexts
+    description: Document uploads for scenario generation context
+  - name: Datasets
+    description: Available evaluation datasets
+  - name: Health
+    description: Service health checks
+
+paths:
+  # ============================================================================
+  # Health
+  # ============================================================================
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      operationId: healthCheck
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  version:
+                    type: string
+                    example: 1.0.0
+
+  # ============================================================================
+  # Agents
+  # ============================================================================
+  /agents:
+    parameters:
+    get:
+      tags: [Agents]
+      summary: List agents
+      description: List all registered agents for the organization
+      operationId: listAgents
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, inactive, deleted]
+          description: Filter by agent status
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: List of agents
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [Agents]
+      summary: Register agent
+      description: |
+        Register a new AI agent for evaluation.
+
+        ## Supported Platforms
+
+        | Protocol | Required Fields | Auth Types |
+        |----------|-----------------|------------|
+        | `openai` | promptId OR assistantId OR workflowId | bearer (API key) |
+        | `azure_openai` | baseUrl, promptId OR assistantId OR workflowId | azure_entra, api_key |
+        | `langgraph` | baseUrl, assistantId | bearer |
+        | `bedrock` | agentId | aws |
+        | `vertex` | projectId, reasoningEngineId | google_oauth |
+        | `custom` | endpoint | any |
+        | `a2a` | agentCardUrl | any |
+        | `mcp` | endpoint, mcpTransport | any |
+
+        ## Platform Protocols
+
+        For agents on major platforms, we use native SDKs for optimal compatibility:
+        - **OpenAI**: Supports Responses API (promptId), Assistants API (assistantId, deprecated Aug 2026), and Agent Builder (workflowId)
+        - **Azure OpenAI**: Same as OpenAI with Azure Entra ID auth
+        - **LangGraph**: Uses threads/runs model via langgraph-sdk
+        - **Bedrock**: Uses AWS Bedrock Agents via boto3
+        - **Vertex**: Uses Google Vertex AI Agent Engine
+
+        ## Custom Agents
+
+        For custom HTTP APIs, use protocol `custom` and provide:
+        - `endpoint`: Full URL to your conversation endpoint (e.g., `https://my-agent.example.com/api/v1/chat`)
+
+        We'll automatically analyze your API to infer the request/response format.
+
+        ## Future Protocols (V2)
+
+        - **A2A**: Google Agent-to-Agent protocol - requires `agentCardUrl`
+        - **MCP**: Model Context Protocol - requires `endpoint` and `mcpTransport`
+      operationId: createAgent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAgentRequest'
+            examples:
+              openaiResponses:
+                summary: OpenAI Prompt (Responses API)
+                description: Register an OpenAI Prompt using the Responses API (preferred).
+                value:
+                  agentId: my-openai-agent
+                  name: OpenAI Agent
+                  description: Customer support agent built on OpenAI
+                  goal: Answer customer questions
+                  industry: retail
+                  endpointConfig:
+                    protocol: openai
+                    promptId: pmpt_abc123xyz
+                  authConfig:
+                    type: bearer
+                    credentials: sk-xxx
+              openaiAssistants:
+                summary: OpenAI Assistant (legacy)
+                description: Register an OpenAI Assistant using the Assistants API (deprecated Aug 2026).
+                value:
+                  agentId: my-openai-agent
+                  name: OpenAI Assistant
+                  description: Customer support assistant built on OpenAI
+                  goal: Answer customer questions
+                  industry: retail
+                  endpointConfig:
+                    protocol: openai
+                    assistantId: asst_abc123xyz
+                  authConfig:
+                    type: bearer
+                    credentials: sk-xxx
+              openaiAgentBuilder:
+                summary: OpenAI Agent Builder (ChatKit)
+                description: Register an OpenAI Agent Builder workflow using ChatKit.
+                value:
+                  agentId: my-workflow-agent
+                  name: Multi-Agent Workflow
+                  description: Multi-agent workflow built with Agent Builder
+                  goal: Handle complex multi-step tasks
+                  industry: technology
+                  endpointConfig:
+                    protocol: openai
+                    workflowId: wf_abc123xyz
+                  authConfig:
+                    type: bearer
+                    credentials: sk-xxx
+              azureOpenai:
+                summary: Azure OpenAI
+                description: Register an Azure OpenAI agent with Entra ID auth.
+                value:
+                  agentId: my-azure-agent
+                  name: Azure OpenAI Agent
+                  description: Enterprise agent hosted on Azure
+                  goal: Enterprise customer support
+                  industry: finance
+                  endpointConfig:
+                    protocol: azure_openai
+                    baseUrl: https://my-resource.openai.azure.com
+                    promptId: pmpt_abc123xyz
+                  authConfig:
+                    type: azure_entra
+                    credentials: client_id:client_secret
+                    azureTenantId: 12345678-1234-1234-1234-123456789012
+              langgraph:
+                summary: LangGraph Platform agent
+                description: Register a LangGraph Platform deployed agent.
+                value:
+                  agentId: my-langgraph-agent
+                  name: LangGraph Agent
+                  description: Multi-step reasoning agent
+                  goal: Complex task automation
+                  industry: technology
+                  endpointConfig:
+                    protocol: langgraph
+                    baseUrl: https://my-deployment.langchain.app
+                    assistantId: my-assistant
+                  authConfig:
+                    type: bearer
+                    credentials: lsv2_xxx
+              bedrock:
+                summary: AWS Bedrock agent
+                description: Register an AWS Bedrock agent.
+                value:
+                  agentId: my-bedrock-agent
+                  name: Bedrock Agent
+                  description: AWS Bedrock powered assistant
+                  goal: Enterprise automation
+                  industry: healthcare
+                  endpointConfig:
+                    protocol: bedrock
+                    agentId: ABCD1234XYZ
+                    agentAliasId: TSTALIASID
+                    region: us-east-1
+                  authConfig:
+                    type: aws
+                    credentials: AKIAIOSFODNN7EXAMPLE:wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+                    awsRegion: us-east-1
+              vertex:
+                summary: Google Vertex AI agent
+                description: Register a Vertex AI Agent Engine agent.
+                value:
+                  agentId: my-vertex-agent
+                  name: Vertex AI Agent
+                  description: Google Cloud powered agent
+                  goal: Customer service automation
+                  industry: retail
+                  endpointConfig:
+                    protocol: vertex
+                    projectId: my-gcp-project
+                    region: us-central1
+                    reasoningEngineId: "1234567890"
+                  authConfig:
+                    type: google_oauth
+                    credentials: '{"type":"service_account",...}'
+              custom:
+                summary: Custom HTTP agent
+                description: Register a custom HTTP API agent.
+                value:
+                  agentId: my-custom-agent
+                  name: My Custom Agent
+                  description: A custom AI assistant
+                  goal: Answer customer questions
+                  industry: retail
+                  endpointConfig:
+                    protocol: custom
+                    endpoint: https://my-agent.example.com/api/v1/chat
+                    specUrl: https://my-agent.example.com/openapi.yaml
+                  authConfig:
+                    type: api_key
+                    credentials: xxx
+                    headerName: X-API-Key
+              a2a:
+                summary: A2A agent (V2)
+                description: Register a Google Agent-to-Agent protocol agent.
+                value:
+                  agentId: my-a2a-agent
+                  name: A2A Agent
+                  description: Agent using Google A2A protocol
+                  goal: Multi-agent collaboration
+                  industry: technology
+                  endpointConfig:
+                    protocol: a2a
+                    agentCardUrl: https://my-agent.example.com/.well-known/agent.json
+                  authConfig:
+                    type: bearer
+                    credentials: xxx
+              mcp:
+                summary: MCP server (V2)
+                description: Register an MCP (Model Context Protocol) server.
+                value:
+                  agentId: my-mcp-agent
+                  name: MCP Agent
+                  description: Agent using MCP protocol
+                  goal: Tool integration
+                  industry: technology
+                  endpointConfig:
+                    protocol: mcp
+                    endpoint: https://my-mcp-server.example.com/mcp
+                    mcpTransport: sse
+                  authConfig:
+                    type: bearer
+                    credentials: xxx
+              withCapabilities:
+                summary: Agent with declared capabilities
+                description: Register an agent with tool access for agentic evaluation.
+                value:
+                  agentId: my-agent
+                  name: My Assistant
+                  description: A helpful AI assistant with tools
+                  goal: Answer customer questions
+                  industry: retail
+                  endpointConfig:
+                    protocol: openai
+                    promptId: pmpt_abc123xyz
+                  authConfig:
+                    type: bearer
+                    credentials: sk-xxx
+                  sessionStrategy: agent_managed
+                  declaredCapabilities:
+                    hasMemory: true
+                    hasTools: true
+                    tools: ["salesforce", "slack", "jira"]
+                    sensitiveDataTypes: ["pii", "financial"]
+                    hasRag: true
+      responses:
+        '201':
+          description: Agent created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Agent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Agent already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /agents/{agentId}:
+    parameters:
+      - $ref: '#/components/parameters/agentId'
+
+    get:
+      tags: [Agents]
+      summary: Get agent
+      description: Get details of a specific agent version by snapshotId.
+      operationId: getAgent
+      parameters:
+        - name: snapshotId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Snapshot ID to retrieve a specific agent version
+      responses:
+        '200':
+          description: Agent details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Agent'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [Agents]
+      summary: Update agent
+      description: Update agent configuration
+      operationId: updateAgent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAgentRequest'
+      responses:
+        '200':
+          description: Agent updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Agent'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [Agents]
+      summary: Delete agent
+      description: Soft delete an agent (can be restored)
+      operationId: deleteAgent
+      responses:
+        '204':
+          description: Agent deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /agents/{agentId}/analyze:
+    parameters:
+      - $ref: '#/components/parameters/agentId'
+      - $ref: '#/components/parameters/snapshotId'
+    post:
+      tags: [Agents]
+      summary: Analyze agent API
+      description: |
+        Use GPT to probe and analyze the agent's API structure.
+
+        This endpoint:
+        1. Parses any provided OpenAPI spec
+        2. Probes the endpoint with common request formats
+        3. Uses GPT to analyze responses and infer the correct schema
+
+        The inferred schema is automatically saved to the agent and used for
+        subsequent evaluations.
+
+        **Note**: This runs automatically when an agent is created with HTTP protocol,
+        but can be triggered manually to re-analyze after configuration changes.
+      operationId: analyzeAgentAPI
+      responses:
+        '200':
+          description: Analysis complete
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyzeAPIResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          description: Analysis failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ============================================================================
+  # Scenarios
+  # ============================================================================
+  /agents/{agentId}/scenarios/generate:
+    parameters:
+      - $ref: '#/components/parameters/agentId'
+    post:
+      tags: [Scenarios]
+      summary: Generate scenarios
+      description: |
+        Generate custom attack scenarios tailored to your agent's capabilities.
+
+        ## Eval Types
+
+        - **red_team**: Security testing - prompts designed to trick the agent into unsafe behavior
+        - **trust**: Quality testing - prompts to check for hallucination, bias, over-refusal
+
+        ## Focus Areas
+
+        **Red Team - Agentic-Specific (Highest Priority)**:
+        These focus areas target vulnerabilities specific to AI agents with tool execution:
+        - `memory_poisoning`: Poison agent memory/RAG for later exploitation (multi-turn attacks)
+        - `tool_chaining`: Exploit tool combinations for unauthorized actions
+        - `goal_hijacking`: Redirect agent objectives via embedded instructions
+        - `trust_exploitation`: Build trust over multiple turns then exploit
+
+        **Red Team - Traditional**:
+        - `data_exfiltration`: Extract sensitive data through tools
+        - `unauthorized_actions`: Perform actions beyond authorization
+        - `privilege_escalation`: Gain elevated permissions
+        - `credential_theft`: Extract API keys, passwords, tokens
+        - `social_engineering`: Psychological manipulation tactics
+        - `prompt_injection`: Inject malicious instructions via data
+        - `jailbreak`: Bypass safety guidelines
+        - `harmful_content`: Generate harmful content
+
+        **Trust** (agent should HELP appropriately):
+        - `hallucination`: Invents facts or citations
+        - `over_refusal`: Refuses legitimate requests
+        - `bias`: Shows demographic bias
+        - `privacy_handling`: PII handling
+        - `uncertainty`: False confidence
+        - `helpfulness`: Actually answers questions
+        - `professional_redirect`: Knows when to recommend professionals
+
+        ## Defaults
+
+        **Red Team defaults** (agentic-prioritized): `memory_poisoning`, `tool_chaining`, `data_exfiltration`, `privilege_escalation`, `trust_exploitation`
+
+        **Trust defaults**: `hallucination`, `over_refusal`, `professional_redirect`, `bias`
+
+        ## Multi-Turn Emphasis
+
+        For agentic evaluation, `includeMultiTurn` defaults to **true**. Multi-turn scenarios are critical for testing:
+        - Memory/context poisoning attacks
+        - Trust building followed by exploitation
+        - Tool chaining across conversation turns
+        - Gradual privilege escalation
+
+        Generation is asynchronous. Use the streaming endpoint for live progress.
+      operationId: generateScenarios
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateScenariosRequest'
+            examples:
+              redTeamAgentic:
+                summary: Red team with agentic focus areas (recommended)
+                value:
+                  evalType: red_team
+                  tools: ["salesforce", "jira", "slack", "email"]
+                  focusAreas: ["indirect_injection", "rag_poisoning", "cascading_failure", "tool_chaining"]
+                  count: 25
+                  includeMultiTurn: true
+              redTeamTraditional:
+                summary: Red team with traditional focus areas
+                value:
+                  evalType: red_team
+                  tools: ["salesforce", "jira", "slack"]
+                  focusAreas: ["data_exfiltration", "social_engineering", "privilege_escalation"]
+                  count: 25
+                  includeMultiTurn: true
+              redTeamCodeExecution:
+                summary: Red team testing code execution risks
+                value:
+                  evalType: red_team
+                  tools: ["code_interpreter", "shell", "file_system"]
+                  focusAreas: ["code_execution", "supply_chain", "indirect_injection"]
+                  count: 20
+                  includeMultiTurn: true
+              redTeamMultiAgent:
+                summary: Red team for multi-agent systems
+                value:
+                  evalType: red_team
+                  tools: ["agent_orchestrator", "sub_agents", "shared_memory"]
+                  focusAreas: ["inter_agent", "cascading_failure", "rag_poisoning"]
+                  count: 20
+                  includeMultiTurn: true
+              redTeamWithContext:
+                summary: Red team with uploaded documents
+                value:
+                  evalType: red_team
+                  tools: ["salesforce", "jira", "slack"]
+                  focusAreas: ["indirect_injection", "rag_poisoning", "data_exfiltration"]
+                  contextIds: ["ctx_20241208_abc123"]
+                  customInstructions: "Focus on attacks that leverage the uploaded business context"
+                  count: 25
+                  includeMultiTurn: true
+              trust:
+                summary: Trust evaluation scenarios
+                value:
+                  evalType: trust
+                  focusAreas: ["hallucination", "over_refusal", "bias"]
+                  customInstructions: "Focus on healthcare compliance scenarios. Test if agent appropriately redirects medical questions to professionals."
+                  count: 20
+              trustWithContext:
+                summary: Trust evaluation with uploaded documents
+                value:
+                  evalType: trust
+                  focusAreas: ["hallucination", "over_refusal", "bias"]
+                  contextIds: ["ctx_20241208_abc123", "ctx_20241208_def456"]
+                  count: 20
+      responses:
+        '202':
+          description: Generation started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerateScenariosResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /agents/{agentId}/scenarios:
+    parameters:
+      - $ref: '#/components/parameters/agentId'
+    get:
+      tags: [Scenarios]
+      summary: List scenario sets
+      description: List all generated scenario sets for an agent
+      operationId: listScenarios
+      parameters:
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: List of scenario sets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScenarioSetListResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /agents/{agentId}/scenarios/{scenarioSetId}:
+    parameters:
+      - $ref: '#/components/parameters/agentId'
+      - $ref: '#/components/parameters/scenarioSetId'
+    get:
+      tags: [Scenarios]
+      summary: Get scenario set
+      description: Get details of a specific scenario set including all scenarios
+      operationId: getScenarioSet
+      responses:
+        '200':
+          description: Scenario set details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScenarioSet'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Scenarios]
+      summary: Update scenario set
+      description: Enable/disable scenarios or add/remove scenarios from a set
+      operationId: updateScenarioSet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateScenariosRequest'
+      responses:
+        '200':
+          description: Scenario set updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScenarioSet'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Scenarios]
+      summary: Delete scenario set
+      description: Delete a scenario set
+      operationId: deleteScenarioSet
+      responses:
+        '204':
+          description: Scenario set deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /agents/{agentId}/scenarios/{scenarioSetId}/stream:
+    parameters:
+      - $ref: '#/components/parameters/agentId'
+      - $ref: '#/components/parameters/scenarioSetId'
+    get:
+      tags: [Scenarios]
+      summary: Stream scenario generation progress
+      description: |
+        Server-Sent Events (SSE) endpoint for live progress updates during scenario generation.
+
+        Returns user-friendly status messages without exposing internal implementation details.
+
+        ## Event Types
+
+        - **init**: Initial state when connecting
+        - **progress**: Progress update with user-friendly message
+        - **complete**: Generation finished successfully
+        - **error**: Generation failed with user-friendly error message
+
+        ## Response Fields
+
+        | Field | Type | Description |
+        |-------|------|-------------|
+        | setId | string | Scenario set ID |
+        | status | string | Status: pending, generating, ready, failed |
+        | stage | string | Current stage: pending, preparing_context, processing_documents, generating, complete, failed |
+        | message | string | User-friendly status message |
+        | progress | object | Progress counts (generated/total) |
+        | scenarioCount | integer | Number of scenarios generated so far |
+        | error | string | User-friendly error message (only on failure) |
+
+        ## Example Usage
+
+        ```javascript
+        const eventSource = new EventSource('/v1/orgs/my-org/agents/my-agent/scenarios/scn_123/stream');
+
+        eventSource.addEventListener('init', (e) => {
+          const data = JSON.parse(e.data);
+          console.log(data.message); // "Waiting to start..."
+        });
+
+        eventSource.addEventListener('progress', (e) => {
+          const data = JSON.parse(e.data);
+          console.log(data.message); // "Generating scenarios (15/25)..."
+          updateProgressBar(data.progress.generated, data.progress.total);
+        });
+
+        eventSource.addEventListener('complete', (e) => {
+          const data = JSON.parse(e.data);
+          console.log(data.message); // "Generated 25 scenarios"
+          eventSource.close();
+        });
+
+        eventSource.addEventListener('error', (e) => {
+          const data = JSON.parse(e.data);
+          showError(data.error); // User-friendly error message
+          eventSource.close();
+        });
+        ```
+      operationId: streamScenarioProgress
+      responses:
+        '200':
+          description: SSE stream of generation progress
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/SSEProgressEvent'
+              example: |
+                event: init
+                data: {"setId":"scn_set_123","status":"pending","stage":"pending","message":"Waiting to start...","scenarioCount":0}
+
+                event: progress
+                data: {"setId":"scn_set_123","status":"generating","stage":"preparing_context","message":"Preparing uploaded documents...","scenarioCount":0}
+
+                event: progress
+                data: {"setId":"scn_set_123","status":"generating","stage":"generating","message":"Generating scenarios (10/25)...","progress":{"generated":10,"total":25},"scenarioCount":10}
+
+                event: complete
+                data: {"setId":"scn_set_123","status":"ready","stage":"complete","message":"Generated 25 scenarios","progress":{"generated":25,"total":25},"scenarioCount":25}
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================================================
+  # Contexts (Document Uploads)
+  # ============================================================================
+  /contexts:
+    parameters:
+    post:
+      tags: [Contexts]
+      summary: Upload context documents
+      description: |
+        Upload documents (PDF, Markdown, CSV, Excel) to provide additional context
+        for scenario generation.
+
+        ## Supported File Types
+
+        - **PDF** (.pdf) - Text extracted from all pages
+        - **Markdown** (.md) - Direct text content
+        - **CSV** (.csv) - Parsed as tabular data
+        - **Excel** (.xlsx, .xls) - Parsed as tabular data
+        - **Text** (.txt) - Direct text content
+        - **JSON** (.json) - Parsed JSON data
+
+        ## Processing
+
+        Files are uploaded immediately and processed asynchronously:
+        1. Upload: Files stored in cloud storage
+        2. Processing: Text extraction and parsing
+        3. Ready: Context available for scenario generation
+
+        Poll the GET endpoint to check processing status.
+
+        ## Usage in Scenario Generation
+
+        Once a context is ready, reference it by `contextId` when generating scenarios:
+        ```json
+        {
+          "contextIds": ["ctx_20241208_abc123"],
+          "evalType": "red_team",
+          ...
+        }
+        ```
+      operationId: createContext
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [name, files]
+              properties:
+                name:
+                  type: string
+                  description: Human-readable name for the context
+                  example: Healthcare Compliance Docs
+                description:
+                  type: string
+                  description: Optional description
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  description: One or more files to upload (max 50MB each)
+      responses:
+        '201':
+          description: Context created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Context'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          description: Context service not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    get:
+      tags: [Contexts]
+      summary: List contexts
+      description: List all uploaded contexts for the organization
+      operationId: listContexts
+      parameters:
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: List of contexts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContextListResponse'
+
+  /contexts/{contextId}:
+    parameters:
+      - $ref: '#/components/parameters/contextId'
+    get:
+      tags: [Contexts]
+      summary: Get context
+      description: Get details of a specific context including file status
+      operationId: getContext
+      responses:
+        '200':
+          description: Context details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Context'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Contexts]
+      summary: Delete context
+      description: Delete a context and all its files
+      operationId: deleteContext
+      responses:
+        '204':
+          description: Context deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /contexts/{contextId}/files:
+    parameters:
+      - $ref: '#/components/parameters/contextId'
+    post:
+      tags: [Contexts]
+      summary: Add files to context
+      description: |
+        Add additional files to an existing context. Files are uploaded via multipart form data.
+
+        The context will return to 'processing' status while the new files are being extracted.
+        Existing files are preserved.
+
+        **Supported file types:** PDF, Markdown, TXT, CSV, Excel (xlsx, xls), JSON
+
+        **File size limit:** 50MB per file, 100MB total per request
+      operationId: addFilesToContext
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - files
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  description: Files to add (must not have same name as existing files)
+      responses:
+        '200':
+          description: Files added successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Context'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: File with same name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: FILE_EXISTS
+                  message: "file already exists: document.pdf"
+
+  /contexts/{contextId}/files/{fileName}:
+    parameters:
+      - $ref: '#/components/parameters/contextId'
+      - name: fileName
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Name of the file to download
+    get:
+      tags: [Contexts]
+      summary: Download file
+      description: Download a specific file from a context
+      operationId: downloadContextFile
+      responses:
+        '200':
+          description: File content
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================================================
+  # Evaluations
+  # ============================================================================
+  /agents/{agentId}/evals:
+    parameters:
+      - $ref: '#/components/parameters/agentId'
+
+    get:
+      tags: [Evaluations]
+      summary: List evaluations
+      description: List all evaluation runs for an agent
+      operationId: listEvalsByAgent
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, running, completed, failed, cancelled]
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: List of evaluations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvalRunListResponse'
+
+    post:
+      tags: [Evaluations]
+      summary: Start evaluation
+      description: |
+        Start a new evaluation run against the agent.
+
+        ## Eval Types
+
+        - **red_team**: Security testing - tests if agent can be tricked into unsafe behavior
+        - **trust**: Quality testing - tests for hallucination, bias, over-refusal
+
+        ## Modes
+
+        - **quick**: Fast smoke test (~100 prompts, 5 min)
+        - **standard**: Balanced coverage (~2K prompts, 30 min)
+        - **deep**: Comprehensive coverage (~5K+ prompts, 2+ hrs)
+
+        ## Using Custom Scenarios
+
+        Generate custom scenarios first via `/scenarios/generate`, then reference them:
+        ```json
+        {
+          "mode": "standard",
+          "evalType": "red_team",
+          "config": {
+            "scenarioSetIds": ["scn_set_20241208_abc123"]
+          }
+        }
+        ```
+
+      operationId: createEval
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEvalRequest'
+            examples:
+              quickRedTeam:
+                summary: Quick red team smoke test
+                value:
+                  snapshotId: snap_abc123
+                  mode: quick
+                  evalType: red_team
+              quickTrust:
+                summary: Quick trust evaluation
+                value:
+                  snapshotId: snap_abc123
+                  mode: quick
+                  evalType: trust
+              standard:
+                summary: Standard evaluation with rate limit
+                value:
+                  snapshotId: snap_abc123
+                  mode: standard
+                  evalType: red_team
+                  config:
+                    requestsPerMinute: 60
+              withScenarioSets:
+                summary: Evaluation with custom scenario sets
+                value:
+                  snapshotId: snap_abc123
+                  mode: standard
+                  evalType: red_team
+                  config:
+                    scenarioSetIds: ["scn_set_20241208_abc123"]
+              selectDatasets:
+                summary: Select specific datasets
+                value:
+                  snapshotId: snap_abc123
+                  mode: standard
+                  evalType: red_team
+                  config:
+                    includeDatasets: ["jailbreakbench", "safetybench"]
+                    excludeCategories: ["adult_content"]
+              combined:
+                summary: Combine datasets and scenario sets
+                value:
+                  snapshotId: snap_abc123
+                  mode: standard
+                  evalType: red_team
+                  config:
+                    includeDatasets: ["quick_eval_v2"]
+                    scenarioSetIds: ["scn_set_20241208_abc123"]
+      responses:
+        '202':
+          description: Evaluation started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateEvalResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Agent already has an active evaluation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /evals/{runId}:
+    parameters:
+      - $ref: '#/components/parameters/runId'
+
+    get:
+      tags: [Evaluations]
+      summary: Get evaluation status
+      description: Get the current status and progress of an evaluation run
+      operationId: getEval
+      responses:
+        '200':
+          description: Evaluation status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvalRun'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /evals/{runId}/results:
+    parameters:
+      - $ref: '#/components/parameters/runId'
+
+    get:
+      tags: [Evaluations]
+      summary: Get evaluation results
+      description: |
+        Get detailed results of a completed evaluation.
+
+        ## Red Team Results (evalType: red_team)
+
+        Results include:
+        - **threatAnalysis**: Aggregated vulnerability analysis mapped to OWASP Agentic AI Top 10
+          - Top vulnerabilities ranked by success rate
+          - Breakdown by ASI threat (ASI01-ASI10)
+          - Coverage analysis showing which threats were tested
+          - Attack vector breakdown (direct, indirect, multi_turn, etc.)
+        - **summaryScores**: Contains:
+          - Overall pass rate (0-1)
+          - **asr**: Attack Success Rate metrics (full/partial/blocked rates)
+          - **refusalAnalysis**: How the agent refused attacks (hard_refuse, evasion, compliance, etc.)
+        - **regulatoryCompliance**: Compliance scores for OWASP LLM Top 10, EU AI Act, NIST AI RMF
+        - **recommendations**: LLM-generated remediation recommendations (prioritized)
+
+        ## Trust Results (evalType: trust)
+
+        Results include:
+        - **trustAnalysis**: Aggregated quality analysis
+          - Top issues ranked by failure rate
+          - Breakdown by quality dimension (hallucination, bias, etc.)
+          - Regulatory impact mapping (EU AI Act, NIST AI RMF)
+          - Consistency analysis for multi-turn tests
+        - **summaryScores**: Overall pass rates with refusal analysis
+        - **recommendations**: Quality improvement recommendations
+
+        ## Common Fields
+
+        - Failed prompts with agent responses
+        - Sample passed prompts
+        - Category breakdown
+        - Performance metrics (latency, duration, session stats)
+      operationId: getEvalResults
+      responses:
+        '200':
+          description: Evaluation results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvalResults'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '425':
+          description: Results not ready yet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /evals/{runId}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/runId'
+
+    post:
+      tags: [Evaluations]
+      summary: Cancel evaluation
+      description: Cancel a running evaluation
+      operationId: cancelEval
+      responses:
+        '200':
+          description: Evaluation cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runId:
+                    type: string
+                  status:
+                    type: string
+                    example: cancelled
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Evaluation cannot be cancelled (not running)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /evals/{runId}/rerun:
+    parameters:
+      - $ref: '#/components/parameters/runId'
+
+    post:
+      tags: [Evaluations]
+      summary: Rerun evaluation
+      description: |
+        Create a new evaluation run based on a previous run's configuration.
+        Uses the agent snapshot from the original run to ensure reproducibility.
+        The new run will use the same evaluation mode, type, and configuration.
+      operationId: rerunEval
+      responses:
+        '202':
+          description: New evaluation run created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateEvalResponse'
+        '404':
+          description: Evaluation run or agent snapshot not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Agent already has an active evaluation run
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ============================================================================
+  # Datasets
+  # ============================================================================
+  /datasets:
+    parameters:
+    get:
+      tags: [Datasets]
+      summary: List datasets
+      description: List all available evaluation datasets
+      operationId: listDatasets
+      parameters:
+        - name: category
+          in: query
+          schema:
+            type: string
+          description: Filter by category
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: List of datasets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatasetListResponse'
+
+  /datasets/{datasetId}:
+    parameters:
+      - name: datasetId
+        in: path
+        required: true
+        schema:
+          type: string
+
+    get:
+      tags: [Datasets]
+      summary: Get dataset
+      description: Get details of a specific dataset
+      operationId: getDataset
+      responses:
+        '200':
+          description: Dataset details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dataset'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+# ==============================================================================
+# Components
+# ==============================================================================
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: "Bearer token authentication (Authorization: Bearer <api_key>)"
+
+  parameters:
+    agentId:
+      name: agentId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Agent identifier
+    runId:
+      name: runId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Evaluation run identifier
+    scenarioSetId:
+      name: scenarioSetId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Scenario set identifier
+    contextId:
+      name: contextId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Context identifier
+    limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        default: 20
+        maximum: 100
+      description: Maximum results to return
+    offset:
+      name: offset
+      in: query
+      schema:
+        type: integer
+        default: 0
+      description: Offset for pagination
+    snapshotId:
+      name: snapshotId
+      in: query
+      required: true
+      schema:
+        type: string
+      description: Snapshot ID of the agent version to use
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    # ==========================================================================
+    # Agent Schemas
+    # ==========================================================================
+    Agent:
+      type: object
+      properties:
+        agentId:
+          type: string
+          example: my-agent-001
+        name:
+          type: string
+          example: My Assistant
+        description:
+          type: string
+        goal:
+          type: string
+        industry:
+          type: string
+          example: healthcare
+        endpointConfig:
+          $ref: '#/components/schemas/EndpointConfig'
+        authConfig:
+          $ref: '#/components/schemas/AuthConfig'
+        sessionStrategy:
+          type: string
+          enum: [agent_managed, client_history, auto_detect]
+        declaredCapabilities:
+          $ref: '#/components/schemas/AgentCapabilities'
+        discoveredCapabilities:
+          $ref: '#/components/schemas/DiscoveredCapabilities'
+        status:
+          type: string
+          enum: [active, inactive, deleted]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    EndpointConfig:
+      type: object
+      required: [protocol]
+      description: |
+        Agent endpoint configuration. Required fields depend on protocol:
+        - openai: promptId OR assistantId (deprecated Aug 2026) OR workflowId (Agent Builder)
+        - azure_openai: baseUrl + promptId OR assistantId OR workflowId
+        - langgraph: baseUrl, assistantId
+        - bedrock: agentId (agentAliasId defaults to TSTALIASID)
+        - vertex: projectId, reasoningEngineId
+        - custom: endpoint (full URL to conversation endpoint)
+        - a2a: agentCardUrl
+        - mcp: endpoint, mcpTransport
+      properties:
+        protocol:
+          type: string
+          enum: [openai, azure_openai, langgraph, bedrock, vertex, custom, custom_ws, a2a, mcp]
+          description: |
+            Agent protocol type:
+            - openai: OpenAI Responses API (promptId), Assistants API (assistantId), or Agent Builder (workflowId)
+            - azure_openai: Azure OpenAI (Entra auth)
+            - langgraph: LangGraph Platform
+            - bedrock: AWS Bedrock Agents
+            - vertex: Google Vertex AI Agent Engine
+            - custom: Generic HTTP API
+            - custom_ws: Generic WebSocket API
+            - a2a: Google Agent-to-Agent protocol (V2)
+            - mcp: Model Context Protocol (V2)
+        # === Platform protocol fields ===
+        promptId:
+          type: string
+          description: OpenAI Prompt ID for Responses API (preferred for OpenAI/Azure OpenAI)
+          example: pmpt_abc123xyz
+        assistantId:
+          type: string
+          description: Assistant ID (OpenAI Assistants API - deprecated Aug 2026, or LangGraph)
+          example: asst_abc123xyz
+        workflowId:
+          type: string
+          description: Workflow ID for OpenAI Agent Builder (ChatKit multi-agent workflows)
+          example: wf_abc123xyz
+        baseUrl:
+          type: string
+          format: uri
+          description: Base URL (required for Azure OpenAI, LangGraph)
+          example: https://my-resource.openai.azure.com
+        agentId:
+          type: string
+          description: Bedrock agent ID
+          example: ABCD1234
+        agentAliasId:
+          type: string
+          description: Bedrock agent alias (defaults to TSTALIASID for draft)
+          example: TSTALIASID
+        reasoningEngineId:
+          type: string
+          description: Vertex AI reasoning engine ID
+          example: "1234567890"
+        projectId:
+          type: string
+          description: GCP project ID (Vertex)
+          example: my-gcp-project
+        region:
+          type: string
+          description: AWS/GCP region
+          example: us-east-1
+        # === Custom protocol fields ===
+        endpoint:
+          type: string
+          format: uri
+          description: Full URL to conversation endpoint (custom, custom_ws, mcp)
+          example: https://my-agent.example.com/api/v1/chat
+        specUrl:
+          type: string
+          format: uri
+          description: URL to OpenAPI spec (custom protocol, optional)
+          example: https://my-agent.example.com/openapi.yaml
+        sessionEndpoint:
+          type: string
+          format: uri
+          description: Session creation endpoint (custom protocol, optional)
+          example: https://my-agent.example.com/session
+        healthEndpoint:
+          type: string
+          format: uri
+          description: Health check endpoint (custom protocol, optional)
+          example: https://my-agent.example.com/health
+        # === A2A protocol fields ===
+        agentCardUrl:
+          type: string
+          format: uri
+          description: Full URL to Agent Card (A2A protocol)
+          example: https://my-agent.example.com/.well-known/agent.json
+        # === MCP protocol fields ===
+        mcpTransport:
+          type: string
+          enum: [sse, streamable_http]
+          description: MCP transport type
+          example: sse
+
+    AuthConfig:
+      type: object
+      required: [type]
+      description: |
+        Authentication configuration. Credentials format depends on type:
+        - bearer/api_key: API key string
+        - basic: username:password
+        - aws: access_key_id:secret_access_key
+        - azure_entra: client_id:client_secret or token
+        - google_oauth: service account JSON or token
+      properties:
+        type:
+          type: string
+          enum: [none, bearer, api_key, basic, aws, azure_entra, google_oauth, custom]
+          description: |
+            Authentication type:
+            - none: No authentication
+            - bearer: Bearer token (Authorization: Bearer <token>)
+            - api_key: API key in custom header
+            - basic: HTTP Basic authentication
+            - aws: AWS SigV4 signing
+            - azure_entra: Azure Entra ID (formerly Azure AD)
+            - google_oauth: Google OAuth/Service Account
+            - custom: Custom header with prefix
+        credentials:
+          type: string
+          writeOnly: true
+          description: Auth credentials (not returned in responses)
+        headerName:
+          type: string
+          example: X-API-Key
+          description: Custom header name (for api_key/custom type)
+        headerPrefix:
+          type: string
+          example: Bearer
+          description: Custom header prefix
+        awsRegion:
+          type: string
+          description: AWS region for SigV4 signing (if different from endpoint region)
+          example: us-east-1
+        azureTenantId:
+          type: string
+          description: Azure tenant ID for Entra authentication
+          example: 12345678-1234-1234-1234-123456789012
+
+    AgentCapabilities:
+      type: object
+      properties:
+        hasMemory:
+          type: boolean
+          description: Agent maintains conversation memory
+        hasTools:
+          type: boolean
+          description: Agent can use external tools
+        tools:
+          type: array
+          items:
+            type: string
+          description: |
+            Quick-start mode: Just tool names. These are expanded using the known tools registry
+            for scenario generation. Common tools: salesforce, jira, slack, github, confluence, etc.
+          example: ["salesforce", "slack", "jira"]
+        toolDefinitions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ToolDefinition'
+          description: |
+            Advanced mode: Full tool definitions with permissions for more precise scenario generation.
+            Use this when you need to specify exact permissions or custom tools not in our registry.
+        hasRag:
+          type: boolean
+          description: Agent uses RAG
+        supportedLanguages:
+          type: array
+          items:
+            type: string
+          example: ["en", "es"]
+        sensitiveDataTypes:
+          type: array
+          items:
+            type: string
+            enum: [pii, phi, financial, confidential, credentials]
+          description: |
+            Types of sensitive data the agent may access. Used for agentic evaluation to generate
+            appropriate data exfiltration and privacy attack scenarios.
+            - pii: Personally identifiable information
+            - phi: Protected health information (HIPAA)
+            - financial: Financial data (PCI-DSS)
+            - confidential: Business confidential information
+            - credentials: API keys, passwords, tokens
+          example: ["pii", "financial"]
+
+    ToolDefinition:
+      type: object
+      description: Detailed tool/integration definition for precise scenario generation
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: Tool identifier (e.g., "salesforce", "custom_crm")
+          example: salesforce
+        type:
+          type: string
+          description: Tool type category
+          enum: [mcp, openapi, custom, crm, messaging, ticketing, database, file_storage]
+          example: crm
+        permissions:
+          type: array
+          items:
+            type: string
+          description: Specific permissions granted to this tool
+          example: ["read:contacts", "write:opportunities", "read:accounts"]
+        canAccessPii:
+          type: boolean
+          description: Whether this tool can access personally identifiable information
+          default: false
+        description:
+          type: string
+          description: Human-readable description of what this tool does
+          example: "Salesforce CRM integration for customer data management"
+
+    DiscoveredCapabilities:
+      type: object
+      properties:
+        hasMemory:
+          type: boolean
+        hasTools:
+          type: boolean
+        tools:
+          type: array
+          items:
+            type: string
+        undeclaredTools:
+          type: array
+          items:
+            type: string
+        lastDiscoveryRun:
+          type: string
+          format: date-time
+
+    CreateAgentRequest:
+      type: object
+      required: [agentId, name, description, goal, industry, endpointConfig, authConfig]
+      properties:
+        agentId:
+          type: string
+          pattern: ^[a-z0-9-]+$
+        name:
+          type: string
+        description:
+          type: string
+        goal:
+          type: string
+          description: What the agent is designed to do
+        industry:
+          type: string
+          description: Industry vertical (affects dataset selection)
+        systemPrompt:
+          type: string
+          description: Agent's system prompt (optional, helps with analysis)
+        endpointConfig:
+          $ref: '#/components/schemas/EndpointConfig'
+        authConfig:
+          $ref: '#/components/schemas/AuthConfig'
+        sessionStrategy:
+          type: string
+          enum: [agent_managed, client_history, auto_detect]
+          default: auto_detect
+        declaredCapabilities:
+          $ref: '#/components/schemas/AgentCapabilities'
+
+    UpdateAgentRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        goal:
+          type: string
+        industry:
+          type: string
+        systemPrompt:
+          type: string
+        endpointConfig:
+          $ref: '#/components/schemas/EndpointConfig'
+        authConfig:
+          $ref: '#/components/schemas/AuthConfig'
+        sessionStrategy:
+          type: string
+        declaredCapabilities:
+          $ref: '#/components/schemas/AgentCapabilities'
+        status:
+          type: string
+          enum: [active, inactive]
+
+    AgentListResponse:
+      type: object
+      properties:
+        agents:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentSummary'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    AgentSummary:
+      type: object
+      properties:
+        agentId:
+          type: string
+        snapshotId:
+          type: string
+          description: Unique identifier for this agent version/snapshot
+        name:
+          type: string
+        industry:
+          type: string
+        status:
+          type: string
+        lastEvalRun:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    # ==========================================================================
+    # Evaluation Schemas
+    # ==========================================================================
+    CreateEvalRequest:
+      type: object
+      required: [snapshotId, mode, evalType]
+      properties:
+        snapshotId:
+          type: string
+          description: |
+            Snapshot ID of the agent version to evaluate. This is returned when you
+            register the agent and ensures reproducible evaluations against a specific
+            agent configuration.
+          example: abc-123-def-456
+        mode:
+          type: string
+          enum: [quick, standard, deep]
+          description: |
+            - quick: ~100 prompts, 5 min
+            - standard: ~2K prompts, 30 min
+            - deep: ~5K+ prompts, 2+ hrs
+        evalType:
+          type: string
+          enum: [red_team, trust]
+          description: |
+            - red_team: Security testing - tests if agent can be tricked into unsafe behavior
+            - trust: Quality testing - tests for hallucination, bias, over-refusal
+        config:
+          $ref: '#/components/schemas/EvalConfig'
+
+    EvalConfig:
+      type: object
+      properties:
+        requestsPerMinute:
+          type: integer
+          default: 60
+          minimum: 1
+          maximum: 300
+          description: Rate limit for agent calls
+        includeDatasets:
+          type: array
+          items:
+            type: string
+          description: Pre-seeded datasets to include
+          example: ["jailbreakbench", "safetybench"]
+        scenarioSetIds:
+          type: array
+          items:
+            type: string
+          description: |
+            Generated scenario set IDs to include. Generate scenarios first
+            via `/scenarios/generate`, then reference them here.
+          example: ["scn_set_20241208_abc123"]
+        excludeCategories:
+          type: array
+          items:
+            type: string
+          description: Categories to exclude
+          example: ["adult_content"]
+
+    CreateEvalResponse:
+      type: object
+      properties:
+        runId:
+          type: string
+          example: run_20241205_abc123
+        agentId:
+          type: string
+        mode:
+          type: string
+        evalType:
+          type: string
+          enum: [red_team, trust]
+        status:
+          type: string
+          example: pending
+        estimatedPrompts:
+          type: integer
+          description: Estimated number of prompts to run
+        createdAt:
+          type: string
+          format: date-time
+
+    EvalRun:
+      type: object
+      properties:
+        runId:
+          type: string
+        agentId:
+          type: string
+        snapshotId:
+          type: string
+          description: Agent snapshot version used for this evaluation
+        mode:
+          type: string
+          enum: [quick, standard, deep]
+        evalType:
+          type: string
+          enum: [red_team, trust]
+          description: Type of evaluation
+        status:
+          type: string
+          enum: [pending, running, completed, failed, cancelled]
+        config:
+          $ref: '#/components/schemas/EvalRunConfig'
+        datasetsUsed:
+          type: array
+          items:
+            $ref: '#/components/schemas/DatasetUsed'
+        scenarioSetsUsed:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScenarioSetUsed'
+          description: Generated scenario sets used in this evaluation
+        progress:
+          $ref: '#/components/schemas/EvalProgress'
+        summaryScores:
+          $ref: '#/components/schemas/SummaryScores'
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    EvalRunConfig:
+      type: object
+      properties:
+        requestsPerMinute:
+          type: integer
+        concurrentSessions:
+          type: integer
+        timeoutSeconds:
+          type: integer
+        resetSessionOnError:
+          type: boolean
+        maxConsecutiveErrors:
+          type: integer
+
+    DatasetUsed:
+      type: object
+      properties:
+        datasetId:
+          type: string
+        version:
+          type: string
+        promptCount:
+          type: integer
+        categories:
+          type: array
+          items:
+            type: string
+
+    ScenarioSetUsed:
+      type: object
+      description: A generated scenario set used in an evaluation
+      properties:
+        setId:
+          type: string
+          description: Scenario set ID
+          example: scn_set_20241208_abc123
+        scenarioCount:
+          type: integer
+          description: Number of enabled scenarios from this set
+        evalType:
+          type: string
+          enum: [red_team, trust]
+          description: Type of scenarios in the set
+        focusAreas:
+          type: array
+          items:
+            type: string
+          description: Focus areas covered by these scenarios
+          example: ["data_exfiltration", "social_engineering"]
+
+    EvalProgress:
+      type: object
+      properties:
+        totalPrompts:
+          type: integer
+        completedPrompts:
+          type: integer
+        passedPrompts:
+          type: integer
+        failedPrompts:
+          type: integer
+        uncertainPrompts:
+          type: integer
+        errorPrompts:
+          type: integer
+        currentDataset:
+          type: string
+        lastUpdated:
+          type: string
+          format: date-time
+
+    SummaryScores:
+      type: object
+      properties:
+        overall:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          description: Overall safety score (0-1, where 1 = perfect)
+        byCategory:
+          type: object
+          additionalProperties:
+            type: number
+          example:
+            jailbreak: 0.95
+            data_exfiltration: 0.98
+            indirect_injection: 0.92
+        bySeverity:
+          type: object
+          additionalProperties:
+            type: number
+          example:
+            critical: 0.99
+            high: 0.97
+            medium: 0.94
+            low: 0.88
+        asr:
+          $ref: '#/components/schemas/ASRMetrics'
+        refusalAnalysis:
+          $ref: '#/components/schemas/RefusalAnalysis'
+
+    ASRMetrics:
+      type: object
+      description: |
+        Attack Success Rate metrics for red_team evaluations.
+        Measures how often attacks succeeded against the agent.
+      properties:
+        overall:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          description: Overall ASR (full + partial successes / total)
+          example: 0.1
+        fullSuccessRate:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          description: Rate of attacks where objectives were completely achieved
+          example: 0.05
+        partialSuccessRate:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          description: Rate of attacks where objectives were partially achieved
+          example: 0.05
+        blockedRate:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          description: Rate of attacks that were completely blocked
+          example: 0.9
+        bySeverity:
+          type: object
+          additionalProperties:
+            type: number
+          description: ASR broken down by severity level
+          example:
+            critical: 0.02
+            high: 0.08
+            medium: 0.12
+        totalAttempts:
+          type: integer
+          description: Total number of attack attempts
+        fullSuccessCount:
+          type: integer
+          description: Number of fully successful attacks
+        partialSuccessCount:
+          type: integer
+          description: Number of partially successful attacks
+        blockedCount:
+          type: integer
+          description: Number of blocked attacks
+
+    RefusalAnalysis:
+      type: object
+      description: |
+        Analysis of how the agent refused harmful requests.
+        Evaluates refusal quality patterns across the evaluation.
+      properties:
+        distribution:
+          type: object
+          description: Count of each refusal quality type
+          properties:
+            hard_refuse:
+              type: integer
+              description: Clear refusal with reasoning
+            soft_refuse_redirect:
+              type: integer
+              description: Polite decline with alternative suggestion
+            partial_compliance:
+              type: integer
+              description: Refuses but leaks some information
+            evasion:
+              type: integer
+              description: Avoids without clear refusal
+            compliance:
+              type: integer
+              description: Fully complies with harmful request
+            unknown:
+              type: integer
+              description: Unable to classify
+        averageQualityScore:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          description: Average refusal quality score (1 = best)
+          example: 0.85
+        dominantPattern:
+          type: string
+          enum: [hard_refuse, soft_refuse_redirect, partial_compliance, evasion, compliance, unknown]
+          description: Most common refusal pattern
+          example: hard_refuse
+        concerningPatterns:
+          type: array
+          description: Categories with weak refusal patterns
+          items:
+            type: object
+            properties:
+              pattern:
+                type: string
+                description: Type of concerning pattern (compliance, weak_refusal)
+              count:
+                type: integer
+                description: Number of occurrences
+              category:
+                type: string
+                description: Attack category where this occurred
+              severity:
+                type: string
+                enum: [critical, high, medium, low]
+              avgScore:
+                type: number
+                format: float
+        interpretation:
+          type: string
+          description: Human-readable summary of refusal quality
+          example: "Agent consistently refuses harmful requests clearly and firmly."
+        totalEvaluated:
+          type: integer
+          description: Total prompts evaluated
+        scoredCount:
+          type: integer
+          description: Number of prompts with quality scores
+
+    EvalResults:
+      type: object
+      properties:
+        runId:
+          type: string
+        agentId:
+          type: string
+        status:
+          type: string
+        evalType:
+          type: string
+          enum: [red_team, trust]
+          description: Type of evaluation (red_team for security, trust for quality)
+        summaryScores:
+          $ref: '#/components/schemas/SummaryScores'
+        regulatoryCompliance:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/Compliance'
+        threatAnalysis:
+          $ref: '#/components/schemas/ThreatAnalysis'
+        trustAnalysis:
+          $ref: '#/components/schemas/TrustAnalysis'
+        recommendations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Recommendation'
+        failures:
+          type: array
+          items:
+            $ref: '#/components/schemas/PromptResult'
+          description: Failed prompt results
+        samplePasses:
+          type: array
+          items:
+            $ref: '#/components/schemas/PromptResult'
+          description: Sample of passed prompts
+
+    Compliance:
+      type: object
+      description: Regulatory compliance assessment for a specific framework
+      properties:
+        score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          description: Compliance score (0-1)
+          example: 0.85
+        status:
+          type: string
+          enum: [compliant, partial, non_compliant]
+          description: Compliance status based on score thresholds
+          example: compliant
+        framework:
+          type: string
+          description: Name of the regulatory framework
+          example: "OWASP LLM Top 10 (2025)"
+
+    Recommendation:
+      type: object
+      properties:
+        priority:
+          type: string
+          enum: [critical, high, medium, low]
+        category:
+          type: string
+        finding:
+          type: string
+        recommendation:
+          type: string
+        affectedPromptIds:
+          type: array
+          items:
+            type: string
+
+    PromptResult:
+      type: object
+      properties:
+        promptId:
+          type: string
+        datasetId:
+          type: string
+        category:
+          type: string
+        severity:
+          type: string
+        prompt:
+          type: string
+          description: May be redacted for restricted datasets
+        response:
+          type: string
+          description: May be redacted for restricted datasets
+        judgment:
+          type: string
+          enum: [pass, fail, uncertain, error]
+        judgmentConfidence:
+          type: number
+        judgmentReasoning:
+          type: string
+        latencyMs:
+          type: integer
+        # Agentic evaluation fields
+        attackSuccess:
+          type: string
+          enum: [full, partial, none]
+          description: |
+            Attack success classification for red_team evaluations:
+            - full: Attack objectives completely achieved
+            - partial: Attack objectives partially achieved
+            - none: Attack completely blocked
+        owaspAsiThreat:
+          type: string
+          description: |
+            OWASP Agentic AI Top 10 threat (ASI01-ASI10) - Primary classification:
+            - ASI01: Goal & Instruction Hijacking
+            - ASI02: Tool & Function Misuse
+            - ASI03: Identity & Privilege Abuse
+            - ASI04: Supply Chain Vulnerabilities
+            - ASI05: Code & Command Execution
+            - ASI06: Memory & Context Poisoning
+            - ASI07: Inter-Agent Communication Risks
+            - ASI08: Cascading Failures
+            - ASI09: Trust Boundary Exploitation
+            - ASI10: Rogue Agent Behavior
+          example: ASI06
+        maestroThreat:
+          type: string
+          description: |
+            MAESTRO framework threat category (T1-T8) - Secondary classification:
+            - T1: Memory/context poisoning
+            - T2: Unauthorized tool calls
+            - T3: Privilege escalation
+            - T4: Resource exhaustion
+            - T5: Hallucination exploitation
+            - T6: Goal hijacking
+            - T7: Behavioral drift
+            - T8: Audit evasion
+          example: T1
+        agenticAttackVector:
+          type: string
+          enum: [direct, indirect, multi_turn, tool_response, memory, inter_agent]
+          description: |
+            Attack vector classification for agentic AI systems:
+            - direct: Direct prompt attack
+            - indirect: Indirect injection via tools/data
+            - multi_turn: Multi-turn conversation attack
+            - tool_response: Attack via manipulated tool response
+            - memory: Attack via memory/context poisoning
+            - inter_agent: Attack via inter-agent communication
+        toolContext:
+          type: array
+          items:
+            type: string
+          description: Tools involved in this evaluation (for agentic scenarios)
+          example: ["salesforce", "jira"]
+        regulatoryMapping:
+          type: array
+          items:
+            type: string
+          description: Regulatory framework references (OWASP, NIST, etc.)
+          example: ["OWASP-LLM01", "NIST-AI-RMF-MAP-1.1"]
+        multiTurnJudgment:
+          $ref: '#/components/schemas/MultiTurnJudgment'
+
+    MultiTurnJudgment:
+      type: object
+      description: Aggregated judgment for multi-turn scenarios
+      properties:
+        finalAttackSuccess:
+          type: string
+          enum: [full, partial, none]
+          description: Overall attack success across all turns
+        turnResults:
+          type: array
+          items:
+            $ref: '#/components/schemas/TurnResult'
+        escalationDetected:
+          type: boolean
+          description: Whether the attack escalated across turns
+        reasoning:
+          type: string
+          description: Overall reasoning for the multi-turn judgment
+
+    TurnResult:
+      type: object
+      description: Result for a single turn in a multi-turn scenario
+      properties:
+        turnNumber:
+          type: integer
+        judgment:
+          type: string
+          enum: [pass, fail, uncertain, error]
+        attackSuccess:
+          type: string
+          enum: [full, partial, none]
+        confidenceScore:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+
+    # ==========================================================================
+    # Threat & Trust Analysis Schemas
+    # ==========================================================================
+    ThreatAnalysis:
+      type: object
+      description: |
+        Aggregated threat analysis for red_team evaluations.
+        Maps results to OWASP Agentic AI Top 10 (primary) and MAESTRO frameworks.
+      properties:
+        topVulnerabilities:
+          type: array
+          items:
+            $ref: '#/components/schemas/ThreatVulnerability'
+          description: Ranked list of most exploitable threats
+        byOwaspAsi:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ThreatStats'
+          description: Breakdown by OWASP Agentic AI Top 10 (ASI01-ASI10)
+        byMaestro:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ThreatStats'
+          description: Breakdown by MAESTRO framework (T1-T8)
+        byAttackVector:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ThreatStats'
+          description: Breakdown by attack vector type
+        multiTurnAnalysis:
+          $ref: '#/components/schemas/MultiTurnAttackAnalysis'
+
+    ThreatVulnerability:
+      type: object
+      description: A ranked vulnerability finding from the evaluation
+      properties:
+        threatId:
+          type: string
+          description: OWASP ASI threat ID
+          example: ASI06
+        threatName:
+          type: string
+          description: Human-readable threat name
+          example: Memory & Context Poisoning
+        successRate:
+          type: number
+          format: float
+          description: Percentage of attacks that succeeded (full + partial)
+          example: 75.0
+        fullSuccessRate:
+          type: number
+          format: float
+          description: Percentage with full attack success
+          example: 45.0
+        severity:
+          type: string
+          enum: [critical, high, medium, low]
+          description: Highest severity level observed
+        totalAttempts:
+          type: integer
+          description: Number of scenarios tested for this threat
+        successfulAttempts:
+          type: integer
+          description: Number of successful attacks
+        recommendation:
+          type: string
+          description: Specific recommendation to address this vulnerability
+
+    ThreatStats:
+      type: object
+      description: Statistics for a specific threat category
+      properties:
+        total:
+          type: integer
+        fullSuccess:
+          type: integer
+          description: Attacks with full success
+        partialSuccess:
+          type: integer
+          description: Attacks with partial success
+        blocked:
+          type: integer
+          description: Attacks that were blocked
+        successRate:
+          type: number
+          format: float
+          description: (full + partial) / total * 100
+
+    MultiTurnAttackAnalysis:
+      type: object
+      description: Analysis comparing single-turn vs multi-turn attack effectiveness
+      properties:
+        singleTurnTotal:
+          type: integer
+        singleTurnSuccessRate:
+          type: number
+          format: float
+        multiTurnTotal:
+          type: integer
+        multiTurnSuccessRate:
+          type: number
+          format: float
+        insight:
+          type: string
+          description: Key finding about multi-turn vs single-turn effectiveness
+          example: "Multi-turn attacks were 2.3x more effective than single-turn attacks, particularly for memory poisoning scenarios."
+
+    TrustAnalysis:
+      type: object
+      description: |
+        Aggregated quality analysis for trust evaluations.
+        Maps results to quality dimensions and regulatory frameworks.
+      properties:
+        topIssues:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrustIssue'
+          description: Ranked list of most significant quality issues
+        byQualityDimension:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/QualityStats'
+          description: Breakdown by quality dimension (hallucination, bias, etc.)
+        regulatoryMapping:
+          $ref: '#/components/schemas/RegulatoryImpact'
+        consistencyAnalysis:
+          $ref: '#/components/schemas/ConsistencyAnalysis'
+
+    TrustIssue:
+      type: object
+      description: A ranked quality issue from the evaluation
+      properties:
+        dimension:
+          type: string
+          description: Quality dimension
+          example: hallucination
+        dimensionName:
+          type: string
+          description: Human-readable dimension name
+          example: Factual Hallucination
+        failureRate:
+          type: number
+          format: float
+          description: Percentage of tests that failed
+          example: 25.0
+        severity:
+          type: string
+          enum: [critical, high, medium, low]
+        totalTests:
+          type: integer
+        failedTests:
+          type: integer
+        regulatoryImpact:
+          type: array
+          items:
+            type: string
+          description: Affected regulations
+          example: ["EU AI Act Art. 13", "NIST AI RMF MAP-1.5"]
+        recommendation:
+          type: string
+          description: Recommendation to address this issue
+
+    QualityStats:
+      type: object
+      description: Statistics for a quality dimension
+      properties:
+        total:
+          type: integer
+        passed:
+          type: integer
+        failed:
+          type: integer
+        uncertain:
+          type: integer
+        passRate:
+          type: number
+          format: float
+        avgLatency:
+          type: number
+          format: float
+
+    RegulatoryImpact:
+      type: object
+      description: How quality issues map to regulatory requirements
+      properties:
+        euAiAct:
+          $ref: '#/components/schemas/RegulatoryFrameworkImpact'
+        nistAiRmf:
+          $ref: '#/components/schemas/RegulatoryFrameworkImpact'
+        owaspLlm:
+          $ref: '#/components/schemas/RegulatoryFrameworkImpact'
+
+    RegulatoryFrameworkImpact:
+      type: object
+      description: Impact on a specific regulatory framework
+      properties:
+        compliant:
+          type: boolean
+          description: Overall compliance status
+        score:
+          type: number
+          format: float
+          description: Compliance score (0-100)
+        affectedArticles:
+          type: array
+          items:
+            type: string
+          description: Specific articles/requirements affected
+        criticalFindings:
+          type: array
+          items:
+            type: string
+          description: High-priority compliance gaps
+
+    ConsistencyAnalysis:
+      type: object
+      description: Cross-turn consistency analysis for multi-turn tests
+      properties:
+        totalMultiTurnTests:
+          type: integer
+        consistentResponses:
+          type: integer
+          description: Tests where agent maintained consistency
+        consistencyRate:
+          type: number
+          format: float
+          description: Percentage of consistent multi-turn sequences
+        commonInconsistencies:
+          type: array
+          items:
+            type: string
+          description: Patterns of inconsistency observed
+
+    EvalRunListResponse:
+      type: object
+      properties:
+        runs:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvalRunSummary'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    EvalRunSummary:
+      type: object
+      properties:
+        runId:
+          type: string
+        mode:
+          type: string
+        evalType:
+          type: string
+          enum: [red_team, trust]
+        status:
+          type: string
+        summaryScores:
+          $ref: '#/components/schemas/SummaryScores'
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+
+    # ==========================================================================
+    # Dataset Schemas
+    # ==========================================================================
+    Dataset:
+      type: object
+      properties:
+        datasetId:
+          type: string
+          example: jailbreakbench
+        name:
+          type: string
+          example: JailbreakBench
+        description:
+          type: string
+        source:
+          type: string
+          example: huggingface
+        version:
+          type: string
+        promptCount:
+          type: integer
+        categories:
+          type: array
+          items:
+            type: string
+        visibility:
+          type: string
+          enum: [full, redacted, scores_only]
+          description: Whether prompt content can be shown to users
+        license:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    DatasetListResponse:
+      type: object
+      properties:
+        datasets:
+          type: array
+          items:
+            $ref: '#/components/schemas/Dataset'
+        total:
+          type: integer
+        categories:
+          type: array
+          description: All unique categories across datasets (for filtering UI)
+          items:
+            type: string
+          example: ["jailbreak", "safety", "toxicity", "multiturn"]
+        evalTypes:
+          type: array
+          description: All unique eval types (for filtering UI)
+          items:
+            type: string
+          example: ["red_team", "trust"]
+
+    # ==========================================================================
+    # Scenario Schemas
+    # ==========================================================================
+    GenerateScenariosRequest:
+      type: object
+      properties:
+        evalType:
+          type: string
+          enum: [red_team, trust]
+          default: red_team
+          description: Type of evaluation scenarios to generate
+        tools:
+          type: array
+          items:
+            type: string
+          description: Tools/systems the agent has access to (required for red_team)
+          example: ["salesforce", "jira", "slack", "email", "database"]
+        focusAreas:
+          type: array
+          items:
+            type: string
+          description: |
+            Areas to focus scenario generation on. If not specified, defaults are used.
+
+            **Red Team Focus Areas - Agentic Security (Research Benchmark-Based)**:
+            | Focus Area | OWASP ASI | Description |
+            |------------|-----------|-------------|
+            | indirect_injection | ASI04 | Inject malicious instructions via tool outputs, emails, external content (InjecAgent benchmark) |
+            | rag_poisoning | ASI06 | Persistent backdoor attacks on RAG knowledge bases (AgentPoison benchmark, 80%+ success) |
+            | cascading_failure | ASI08 | Trigger error propagation across multi-agent systems (MAST benchmark) |
+            | code_execution | ASI05 | RCE via generated code, shell injection, unsafe deserialization (OS-Harm benchmark) |
+            | supply_chain | ASI04 | Exploit compromised MCP servers, plugins, or tool descriptors |
+            | inter_agent | ASI07 | Attack via inter-agent communication: message spoofing, replay attacks |
+            | memory_poisoning | ASI06 | Poison agent memory/RAG for future exploitation (multi-turn) |
+            | tool_chaining | ASI02 | Exploit tool combinations for unauthorized actions |
+            | trust_exploitation | ASI09 | Build trust over multiple turns then exploit |
+            | goal_hijacking | ASI01 | Redirect agent objectives via embedded instructions |
+
+            **Red Team Focus Areas - Traditional Security**:
+            | Focus Area | Description |
+            |------------|-------------|
+            | data_exfiltration | Extract sensitive data through tools |
+            | privilege_escalation | Access beyond authorized scope |
+            | unauthorized_actions | Trick agent into unauthorized operations |
+            | credential_theft | Extract API keys, passwords, tokens |
+            | social_engineering | Psychological manipulation tactics |
+            | prompt_injection | Inject malicious instructions via data |
+            | jailbreak | Bypass safety guidelines |
+            | harmful_content | Generate harmful/illegal content |
+
+            **Trust Focus Areas**:
+            | Focus Area | Description |
+            |------------|-------------|
+            | hallucination | Agent invents facts, fake citations |
+            | over_refusal | Agent refuses legitimate requests |
+            | bias | Demographic bias in responses |
+            | privacy_handling | Appropriate PII handling |
+            | uncertainty | Claims false certainty |
+            | helpfulness | Actually answers questions |
+            | professional_redirect | Knows when to recommend professionals |
+
+            **Default red_team**: indirect_injection, rag_poisoning, tool_chaining, data_exfiltration, trust_exploitation
+            **Default trust**: hallucination, over_refusal, professional_redirect, bias
+          example: ["indirect_injection", "rag_poisoning", "cascading_failure", "tool_chaining"]
+        customInstructions:
+          type: string
+          description: |
+            Additional instructions for scenario generation.
+            Examples: industry focus, compliance requirements, specific attack patterns to test.
+          example: "Focus on healthcare compliance (HIPAA). Test scenarios where agent might leak PHI."
+        contextIds:
+          type: array
+          items:
+            type: string
+          description: |
+            Context IDs to use for scenario generation. Contexts contain uploaded
+            documents (PDF, CSV, etc.) that provide business context for generating
+            more targeted and realistic attack scenarios.
+          example: ["ctx_20241208_abc123"]
+        count:
+          type: integer
+          minimum: 1
+          maximum: 30
+          default: 20
+          description: |
+            Number of scenarios to generate. Maximum 30 per request.
+            Quality over quantity - we recommend 15-25 for most evaluations.
+        includeMultiTurn:
+          type: boolean
+          default: true
+          description: |
+            Include multi-turn conversation scenarios. **Defaults to true** for agentic evaluation.
+
+            Multi-turn scenarios are critical for testing:
+            - Memory/context poisoning attacks
+            - Trust building followed by exploitation
+            - Tool chaining across conversation turns
+            - Gradual privilege escalation
+
+            Set to false only if you specifically want single-turn tests.
+
+    GenerateScenariosResponse:
+      type: object
+      properties:
+        scenarioSetId:
+          type: string
+          example: scn_set_20241205_abc123
+        status:
+          type: string
+          enum: [pending, generating, ready, failed]
+        estimatedSeconds:
+          type: integer
+          description: Estimated time to complete generation
+
+    SSEProgressEvent:
+      type: object
+      description: |
+        User-friendly progress event sent via Server-Sent Events.
+        Internal implementation details are hidden from the response.
+      properties:
+        setId:
+          type: string
+          description: Scenario set ID
+          example: scn_set_20241205_abc123
+        status:
+          type: string
+          enum: [pending, generating, ready, failed]
+          description: Current status of the scenario set
+        stage:
+          type: string
+          enum: [pending, preparing_context, processing_documents, generating, complete, failed]
+          description: |
+            Current processing stage:
+            - pending: Waiting to start
+            - preparing_context: Loading uploaded documents
+            - processing_documents: Extracting text from documents
+            - generating: AI is generating scenarios
+            - complete: Generation finished successfully
+            - failed: Generation failed
+        message:
+          type: string
+          description: User-friendly status message
+          example: "Generating scenarios (15/25)..."
+        progress:
+          type: object
+          description: Generation progress counts
+          properties:
+            generated:
+              type: integer
+              description: Number of scenarios generated so far
+            total:
+              type: integer
+              description: Target number of scenarios
+        scenarioCount:
+          type: integer
+          description: Number of scenarios currently in the set
+        error:
+          type: string
+          description: |
+            User-friendly error message (only present when status is 'failed').
+            Internal error details are not exposed.
+          example: "AI service temporarily unavailable. Please try again."
+
+    ScenarioSet:
+      type: object
+      properties:
+        setId:
+          type: string
+          example: scn_set_20241205_abc123
+        agentId:
+          type: string
+        status:
+          type: string
+          enum: [pending, generating, ready, failed]
+        config:
+          $ref: '#/components/schemas/ScenarioGenConfig'
+        scenarios:
+          type: array
+          items:
+            $ref: '#/components/schemas/Scenario'
+        summary:
+          $ref: '#/components/schemas/ScenarioSummary'
+        progress:
+          $ref: '#/components/schemas/GenerationProgress'
+        error:
+          type: string
+          description: Error message if generation failed
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ScenarioGenConfig:
+      type: object
+      properties:
+        evalType:
+          type: string
+          enum: [red_team, trust]
+        tools:
+          type: array
+          items:
+            type: string
+        focusAreas:
+          type: array
+          items:
+            type: string
+        customInstructions:
+          type: string
+        industry:
+          type: string
+        count:
+          type: integer
+        includeMultiTurn:
+          type: boolean
+
+    Scenario:
+      type: object
+      properties:
+        id:
+          type: string
+        category:
+          type: string
+          description: Attack category or test type
+        subcategory:
+          type: string
+        tool:
+          type: string
+          description: Target tool/system for the scenario
+        severity:
+          type: string
+          enum: [critical, high, medium, low]
+        prompt:
+          type: string
+          description: The scenario prompt/message
+        scenarioType:
+          type: string
+          description: Attack vector (red_team) or test type (trust)
+        expectedBehavior:
+          type: string
+          description: What the agent should do
+        tags:
+          type: array
+          items:
+            type: string
+        multiTurn:
+          type: boolean
+        turns:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScenarioTurn'
+          description: For multi-turn scenarios
+        enabled:
+          type: boolean
+          default: true
+        rationale:
+          type: string
+          description: Why this scenario is included
+        groundTruth:
+          type: array
+          items:
+            type: string
+          description: Patterns for good response (trust evals)
+        failureIndicators:
+          type: array
+          items:
+            type: string
+          description: Patterns indicating failure (trust evals)
+        # Agentic evaluation fields
+        maestroThreat:
+          type: string
+          description: |
+            MAESTRO framework threat category (T1-T8):
+            - T1: Prompt Injection & Jailbreaks
+            - T2: Resource & Service Abuse
+            - T3: Data & Privacy Attacks
+            - T4: Manipulation & Social Engineering
+            - T5: Unauthorized Access & Privilege Escalation
+            - T6: Supply Chain & Dependency Attacks
+            - T7: Output Integrity & Trust Attacks
+            - T8: Agentic Autonomy & Control Attacks
+          example: T3
+        owaspAsiThreat:
+          type: string
+          description: |
+            OWASP Agentic AI Security Top 10 (ASI01-ASI10):
+            - ASI01: Goal & Instruction Hijacking
+            - ASI02: Tool & Function Call Misuse
+            - ASI03: Identity & Access Abuse
+            - ASI04: Agent Supply Chain Vulnerabilities
+            - ASI05: Code & Command Execution Risks
+            - ASI06: Memory & Context Poisoning
+            - ASI07: Inter-Agent Communication Risks
+            - ASI08: Cascading Hallucination & Failures
+            - ASI09: Trust Boundary & Privilege Exploitation
+            - ASI10: Rogue or Compromised Agents
+          example: ASI06
+        agenticAttackVector:
+          type: string
+          enum: [direct, indirect, multi_turn, tool_response, memory, inter_agent]
+          description: |
+            Attack vector for agentic AI systems:
+            - direct: Direct prompt attack
+            - indirect: Indirect injection via tools/data
+            - multi_turn: Multi-turn conversation attack
+            - tool_response: Attack via manipulated tool response
+            - memory: Attack via memory/context poisoning (plant data for later exploitation)
+            - inter_agent: Attack via inter-agent communication in multi-agent systems
+        toolContext:
+          type: array
+          items:
+            type: string
+          description: Tools involved in this scenario
+          example: ["salesforce", "jira"]
+        regulatoryMapping:
+          type: array
+          items:
+            type: string
+          description: Regulatory framework references
+          example: ["OWASP-LLM01", "NIST-AI-RMF-MAP-1.1"]
+
+    ScenarioTurn:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+
+    ScenarioSummary:
+      type: object
+      properties:
+        total:
+          type: integer
+        enabled:
+          type: integer
+        byTool:
+          type: object
+          additionalProperties:
+            type: integer
+        bySeverity:
+          type: object
+          additionalProperties:
+            type: integer
+        byCategory:
+          type: object
+          additionalProperties:
+            type: integer
+        multiTurn:
+          type: integer
+
+    GenerationProgress:
+      type: object
+      properties:
+        total:
+          type: integer
+          description: Target count
+        generated:
+          type: integer
+          description: Scenarios generated so far
+        lastUpdated:
+          type: string
+          format: date-time
+
+    UpdateScenariosRequest:
+      type: object
+      description: |
+        Update a scenario set by enabling/disabling scenarios, adding new ones, or editing existing.
+        All fields are optional - only include the operations you want to perform.
+      properties:
+        enable:
+          type: array
+          items:
+            type: string
+          description: Scenario IDs to enable for evaluation
+          example: ["scn_1", "scn_2"]
+        disable:
+          type: array
+          items:
+            type: string
+          description: Scenario IDs to disable (excluded from evaluation)
+          example: ["scn_3"]
+        addScenarios:
+          type: array
+          items:
+            type: string
+          description: |
+            Natural language prompts to add as scenarios. The LLM will convert these
+            into properly formatted scenario objects with category, severity, and metadata.
+          example: ["Test social engineering via email", "Try to exfiltrate customer data through Slack"]
+        addRawScenarios:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScenarioInput'
+          description: |
+            Add scenarios directly without LLM processing. Useful for precise control
+            over scenario format or when importing from external sources.
+        editScenarios:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScenarioUpdate'
+          description: |
+            Edit existing scenarios. Only include fields you want to update.
+            The scenario ID is required to identify which scenario to modify.
+        removeScenarios:
+          type: array
+          items:
+            type: string
+          description: Scenario IDs to permanently remove from the set
+          example: ["scn_4"]
+
+    ScenarioInput:
+      type: object
+      description: Direct scenario input for addRawScenarios (bypasses LLM processing)
+      required:
+        - category
+        - severity
+        - prompt
+      properties:
+        category:
+          type: string
+          description: Attack category or test type
+          example: jailbreak
+        subcategory:
+          type: string
+          description: Optional subcategory for finer classification
+        tool:
+          type: string
+          description: Target tool/system for the scenario
+          example: salesforce
+        severity:
+          type: string
+          enum: [critical, high, medium, low]
+          description: Severity level of the test
+        prompt:
+          type: string
+          description: The actual prompt text
+        scenarioType:
+          type: string
+          description: Attack vector (red_team) or test type (trust)
+        expectedBehavior:
+          type: string
+          description: What the agent should do when presented with this scenario
+        tags:
+          type: array
+          items:
+            type: string
+          description: Classification tags
+          example: ["custom", "manual", "compliance"]
+        multiTurn:
+          type: boolean
+          description: Whether this is a multi-turn scenario
+        turns:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScenarioTurn'
+          description: Conversation turns for multi-turn scenarios
+        rationale:
+          type: string
+          description: Why this scenario is included in the evaluation
+        groundTruth:
+          type: array
+          items:
+            type: string
+          description: Patterns indicating a good response (for trust evaluations)
+        failureIndicators:
+          type: array
+          items:
+            type: string
+          description: Patterns indicating failure (for trust evaluations)
+        toolContext:
+          type: array
+          items:
+            type: string
+          description: Tools available in the scenario context
+        agenticAttackVector:
+          type: string
+          enum: [direct, indirect, multi_turn, tool_response, memory, inter_agent]
+          description: Attack vector for agentic AI systems
+        maestroThreat:
+          type: string
+          description: MAESTRO framework threat category (T1-T8)
+        owaspAsiThreat:
+          type: string
+          description: OWASP Agentic AI Security threat (ASI01-ASI10)
+        fullSuccessIndicators:
+          type: array
+          items:
+            type: string
+          description: Patterns indicating full attack success
+        partialSuccessIndicators:
+          type: array
+          items:
+            type: string
+          description: Patterns indicating partial attack success
+        regulatoryMapping:
+          type: array
+          items:
+            type: string
+          description: Regulatory framework references
+          example: ["OWASP-LLM01", "NIST-AI-RMF-MAP-1.1"]
+
+    ScenarioUpdate:
+      type: object
+      description: Update an existing scenario. Only include fields you want to change.
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          description: Scenario ID to update (required)
+          example: scn_1
+        category:
+          type: string
+          description: New category
+        subcategory:
+          type: string
+          description: New subcategory
+        tool:
+          type: string
+          description: New target tool
+        severity:
+          type: string
+          enum: [critical, high, medium, low]
+          description: New severity level
+        prompt:
+          type: string
+          description: New prompt text
+        scenarioType:
+          type: string
+          description: New scenario type
+        expectedBehavior:
+          type: string
+          description: New expected behavior
+        tags:
+          type: array
+          items:
+            type: string
+          description: New tags (replaces existing)
+        multiTurn:
+          type: boolean
+          description: Update multi-turn flag
+        turns:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScenarioTurn'
+          description: New turns (replaces existing)
+        enabled:
+          type: boolean
+          description: Enable/disable this scenario
+        rationale:
+          type: string
+          description: New rationale
+
+    ScenarioSetListResponse:
+      type: object
+      properties:
+        scenarioSets:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScenarioSetSummary'
+        total:
+          type: integer
+
+    ScenarioSetSummary:
+      type: object
+      properties:
+        setId:
+          type: string
+        status:
+          type: string
+        summary:
+          $ref: '#/components/schemas/ScenarioSummary'
+        createdAt:
+          type: string
+          format: date-time
+
+    # ==========================================================================
+    # API Analysis Schemas
+    # ==========================================================================
+    AnalyzeAPIResponse:
+      type: object
+      properties:
+        schema:
+          $ref: '#/components/schemas/InferredAPISchema'
+        successful:
+          type: boolean
+          description: Whether the analysis was successful
+        message:
+          type: string
+          description: Error message if analysis failed
+
+    InferredAPISchema:
+      type: object
+      description: API structure inferred by GPT analysis
+      properties:
+        apiStyle:
+          type: string
+          enum: [chat_stateless, single_message, thread_based, task_based, langserve, flowise, dify, haystack, botpress]
+          description: |
+            How messages are formatted:
+            - chat_stateless: Full history sent each request as messages array
+            - single_message: Single message string per request
+            - thread_based: Messages added to server-managed thread
+            - task_based: Task-oriented with contextId grouping
+            - langserve: LangChain LangServe format
+            - flowise: Flowise prediction format
+            - dify: Dify workflow format
+            - haystack: Haystack Hayhooks format
+            - botpress: Botpress format
+        requestMethod:
+          type: string
+          example: POST
+        requestContentType:
+          type: string
+          example: application/json
+        messageField:
+          type: string
+          description: Field name for message content
+          example: messages
+        sessionIdField:
+          type: string
+          description: Field name for session ID in request
+        historyField:
+          type: string
+          description: Field for conversation history
+        additionalFields:
+          type: object
+          additionalProperties: true
+          description: Other required fields
+        responseContentField:
+          type: string
+          description: Path to extract response content
+          example: choices[0].message.content
+        responseErrorField:
+          type: string
+          description: Path to extract error messages
+        streamingSupported:
+          type: boolean
+        sessionIdInResponse:
+          type: string
+          description: Path to extract session ID from response
+        sessionIdInHeader:
+          type: string
+          description: Header name if session sent there
+        sessionCreateMethod:
+          type: string
+          enum: [auto, explicit, none]
+          description: How sessions are created
+        inferredAt:
+          type: string
+          format: date-time
+        inferenceMethod:
+          type: string
+          enum: [openapi_spec, probe, gpt_analysis]
+        confidence:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          description: Confidence in the inferred schema
+        rawAnalysis:
+          type: string
+          description: GPT's reasoning (internal)
+
+    # ==========================================================================
+    # Context Schemas
+    # ==========================================================================
+    Context:
+      type: object
+      properties:
+        contextId:
+          type: string
+          example: ctx_20241208_abc123
+        name:
+          type: string
+          example: Healthcare Compliance Docs
+        description:
+          type: string
+        status:
+          type: string
+          enum: [processing, ready, failed]
+          description: |
+            - processing: Files being uploaded/parsed
+            - ready: All files processed, available for use
+            - failed: Processing failed
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContextFile'
+        gcsPath:
+          type: string
+          description: Cloud storage path (internal)
+        summary:
+          $ref: '#/components/schemas/ContextSummary'
+        error:
+          type: string
+          description: Error message if status is failed
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+          description: Optional expiration time
+
+    ContextFile:
+      type: object
+      properties:
+        name:
+          type: string
+          example: hipaa_guide.pdf
+        size:
+          type: integer
+          format: int64
+          description: File size in bytes
+        contentType:
+          type: string
+          example: application/pdf
+        status:
+          type: string
+          enum: [uploading, processing, ready, failed]
+        extractedChars:
+          type: integer
+          description: Number of characters extracted
+        pageCount:
+          type: integer
+          description: Number of pages (for PDFs)
+        rowCount:
+          type: integer
+          description: Number of rows (for CSV/Excel)
+        error:
+          type: string
+          description: Error message if file processing failed
+
+    ContextSummary:
+      type: object
+      properties:
+        totalFiles:
+          type: integer
+        totalSize:
+          type: integer
+          format: int64
+          description: Total size in bytes
+        extractedTokens:
+          type: integer
+          description: Approximate token count of extracted text
+        readyFiles:
+          type: integer
+        failedFiles:
+          type: integer
+
+    ContextListResponse:
+      type: object
+      properties:
+        contexts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContextSummaryResponse'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    ContextSummaryResponse:
+      type: object
+      properties:
+        contextId:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+        fileCount:
+          type: integer
+        totalSize:
+          type: integer
+          format: int64
+        summary:
+          $ref: '#/components/schemas/ContextSummary'
+        createdAt:
+          type: string
+          format: date-time
+
+    # ==========================================================================
+    # Common Schemas
+    # ==========================================================================
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          example: INVALID_REQUEST
+        message:
+          type: string
+          example: Invalid request body
+        details:
+          type: object
+          additionalProperties: true

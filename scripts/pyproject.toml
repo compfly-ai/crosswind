@@ -1,0 +1,15 @@
+[project]
+name = "crosswind-scripts"
+version = "0.1.0"
+description = "Scripts for Crosswind dataset seeding and utilities"
+requires-python = ">=3.11"
+dependencies = [
+    "datasets>=2.18.0",
+    "huggingface-hub>=0.21.0",
+    "motor>=3.3.0",
+    "python-dotenv>=1.0.0",
+    "tqdm>=4.66.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = []

@@ -1,0 +1,33 @@
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Build artifacts
+api/bin/
+worker/.venv/
+worker/__pycache__/
+worker/**/__pycache__/
+*.pyc
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Data
+data/
+*.db
+
+# Logs
+*.log
+
+# Test coverage
+coverage/
+.coverage
+htmlcov/
+
+*.md
+!README.md
+!LICENSE
+!CONTRIBUTING.md
