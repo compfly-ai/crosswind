@@ -3,7 +3,7 @@ package services
 import (
 	"context"
 
-	"github.com/agent-eval/agent-eval/internal/repository/clickhouse"
+	"github.com/compfly-ai/crosswind/internal/repository/clickhouse"
 )
 
 // AnalyticsService provides analytics and reporting capabilities

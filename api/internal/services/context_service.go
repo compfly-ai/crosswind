@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agent-eval/agent-eval/internal/models"
-	"github.com/agent-eval/agent-eval/internal/repository/mongo"
-	"github.com/agent-eval/agent-eval/pkg/storage"
+	"github.com/compfly-ai/crosswind/internal/models"
+	"github.com/compfly-ai/crosswind/internal/repository/mongo"
+	"github.com/compfly-ai/crosswind/pkg/storage"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 )

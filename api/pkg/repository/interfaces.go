@@ -4,7 +4,7 @@ package repository
 import (
 	"context"
 
-	"github.com/agent-eval/agent-eval/internal/models"
+	"github.com/compfly-ai/crosswind/internal/models"
 	"go.mongodb.org/mongo-driver/bson"
 )
 

@@ -7,14 +7,14 @@
 package api
 
 import (
-	"github.com/agent-eval/agent-eval/internal/config"
-	"github.com/agent-eval/agent-eval/internal/models"
-	"github.com/agent-eval/agent-eval/internal/queue"
-	"github.com/agent-eval/agent-eval/internal/repository/clickhouse"
-	"github.com/agent-eval/agent-eval/internal/repository/mongo"
-	"github.com/agent-eval/agent-eval/internal/services"
-	"github.com/agent-eval/agent-eval/pkg/repository"
-	"github.com/agent-eval/agent-eval/pkg/storage"
+	"github.com/compfly-ai/crosswind/internal/config"
+	"github.com/compfly-ai/crosswind/internal/models"
+	"github.com/compfly-ai/crosswind/internal/queue"
+	"github.com/compfly-ai/crosswind/internal/repository/clickhouse"
+	"github.com/compfly-ai/crosswind/internal/repository/mongo"
+	"github.com/compfly-ai/crosswind/internal/services"
+	"github.com/compfly-ai/crosswind/pkg/repository"
+	"github.com/compfly-ai/crosswind/pkg/storage"
 )
 
 // ============================================================================

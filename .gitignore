@@ -5,6 +5,7 @@
 
 # Build artifacts
 api/bin/
+api/server
 worker/.venv/
 worker/__pycache__/
 worker/**/__pycache__/

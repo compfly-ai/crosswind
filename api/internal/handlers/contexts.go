@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/agent-eval/agent-eval/internal/services"
+	"github.com/compfly-ai/crosswind/internal/services"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )

@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agent-eval/agent-eval/internal/models"
-	"github.com/agent-eval/agent-eval/internal/services"
+	"github.com/compfly-ai/crosswind/internal/models"
+	"github.com/compfly-ai/crosswind/internal/services"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )

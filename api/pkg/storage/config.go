@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/agent-eval/agent-eval/pkg/storage/gcs"
-	"github.com/agent-eval/agent-eval/pkg/storage/local"
+	"github.com/compfly-ai/crosswind/pkg/storage/gcs"
+	"github.com/compfly-ai/crosswind/pkg/storage/local"
 	"go.uber.org/zap"
 )
 

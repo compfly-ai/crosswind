@@ -1,4 +1,4 @@
-module github.com/agent-eval/agent-eval
+module github.com/compfly-ai/crosswind
 
 go 1.24.0
 
