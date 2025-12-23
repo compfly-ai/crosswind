@@ -4,7 +4,7 @@ package repository
 import (
 	"context"
 
-	"github.com/compfly-ai/crosswind/internal/models"
+	"github.com/compfly-ai/crosswind/api/internal/models"
 	"go.mongodb.org/mongo-driver/bson"
 )
 

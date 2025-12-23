@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/compfly-ai/crosswind/internal/models"
+	"github.com/compfly-ai/crosswind/api/internal/models"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"

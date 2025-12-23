@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/compfly-ai/crosswind/internal/models"
+	"github.com/compfly-ai/crosswind/api/internal/models"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/openai/openai-go/shared"

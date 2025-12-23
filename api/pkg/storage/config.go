@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/compfly-ai/crosswind/pkg/storage/gcs"
-	"github.com/compfly-ai/crosswind/pkg/storage/local"
+	"github.com/compfly-ai/crosswind/api/pkg/storage/gcs"
+	"github.com/compfly-ai/crosswind/api/pkg/storage/local"
 	"go.uber.org/zap"
 )
 

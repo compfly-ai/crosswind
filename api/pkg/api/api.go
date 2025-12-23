@@ -7,14 +7,14 @@
 package api
 
 import (
-	"github.com/compfly-ai/crosswind/internal/config"
-	"github.com/compfly-ai/crosswind/internal/models"
-	"github.com/compfly-ai/crosswind/internal/queue"
-	"github.com/compfly-ai/crosswind/internal/repository/clickhouse"
-	"github.com/compfly-ai/crosswind/internal/repository/mongo"
-	"github.com/compfly-ai/crosswind/internal/services"
-	"github.com/compfly-ai/crosswind/pkg/repository"
-	"github.com/compfly-ai/crosswind/pkg/storage"
+	"github.com/compfly-ai/crosswind/api/internal/config"
+	"github.com/compfly-ai/crosswind/api/internal/models"
+	"github.com/compfly-ai/crosswind/api/internal/queue"
+	"github.com/compfly-ai/crosswind/api/internal/repository/clickhouse"
+	"github.com/compfly-ai/crosswind/api/internal/repository/mongo"
+	"github.com/compfly-ai/crosswind/api/internal/services"
+	"github.com/compfly-ai/crosswind/api/pkg/repository"
+	"github.com/compfly-ai/crosswind/api/pkg/storage"
 )
 
 // ============================================================================

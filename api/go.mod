@@ -1,4 +1,4 @@
-module github.com/compfly-ai/crosswind
+module github.com/compfly-ai/crosswind/api
 
 go 1.24.0
 

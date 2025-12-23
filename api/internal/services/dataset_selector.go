@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/compfly-ai/crosswind/internal/models"
+	"github.com/compfly-ai/crosswind/api/internal/models"
 )
 
 // DatasetSelector handles intelligent dataset selection based on agent profile

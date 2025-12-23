@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/compfly-ai/crosswind/internal/models"
-	"github.com/compfly-ai/crosswind/pkg/repository"
+	"github.com/compfly-ai/crosswind/api/internal/models"
+	"github.com/compfly-ai/crosswind/api/pkg/repository"
 	mongodriver "go.mongodb.org/mongo-driver/mongo"
 )
 

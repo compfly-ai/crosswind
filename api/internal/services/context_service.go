@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/compfly-ai/crosswind/internal/models"
-	"github.com/compfly-ai/crosswind/internal/repository/mongo"
-	"github.com/compfly-ai/crosswind/pkg/storage"
+	"github.com/compfly-ai/crosswind/api/internal/models"
+	"github.com/compfly-ai/crosswind/api/internal/repository/mongo"
+	"github.com/compfly-ai/crosswind/api/pkg/storage"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 )

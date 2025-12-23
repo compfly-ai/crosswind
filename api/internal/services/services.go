@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 
-	"github.com/compfly-ai/crosswind/internal/config"
-	"github.com/compfly-ai/crosswind/internal/queue"
-	"github.com/compfly-ai/crosswind/internal/repository/clickhouse"
-	"github.com/compfly-ai/crosswind/internal/repository/mongo"
+	"github.com/compfly-ai/crosswind/api/internal/config"
+	"github.com/compfly-ai/crosswind/api/internal/queue"
+	"github.com/compfly-ai/crosswind/api/internal/repository/clickhouse"
+	"github.com/compfly-ai/crosswind/api/internal/repository/mongo"
 	"go.uber.org/zap"
 )
 

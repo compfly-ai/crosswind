@@ -1,6 +1,6 @@
 package services
 
-import "github.com/compfly-ai/crosswind/internal/models"
+import "github.com/compfly-ai/crosswind/api/internal/models"
 
 // KnownTools is a registry of common enterprise tools with default permissions
 // Used to expand simple tool names (e.g., "salesforce") to full ToolDefinitions

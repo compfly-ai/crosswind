@@ -3,7 +3,7 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/compfly-ai/crosswind/internal/services"
+	"github.com/compfly-ai/crosswind/api/internal/services"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
