@@ -3,6 +3,7 @@
 from typing import Any
 
 from crosswind.models import AuthConfig
+from crosswind.protocols.a2a_adapter import A2AAdapter
 from crosswind.protocols.base import ProtocolAdapter
 from crosswind.protocols.openapi_http import HTTPAgentError, OpenAPIHttpAdapter
 from crosswind.utils.crypto import decrypt_credentials
@@ -104,7 +105,14 @@ def create_adapter(agent_doc: dict[str, Any]) -> ProtocolAdapter:
         )
 
     elif protocol == "a2a":
-        raise NotImplementedError("A2A protocol support coming in V2")
+        agent_card_url = endpoint_config.get("agentCardUrl")
+        if not agent_card_url:
+            raise ValueError("A2A protocol requires agentCardUrl in endpointConfig")
+
+        return A2AAdapter(
+            agent_card_url=agent_card_url,
+            auth_config=auth,
+        )
 
     elif protocol == "mcp":
         raise NotImplementedError("MCP protocol support coming in V2")
@@ -117,5 +125,6 @@ __all__ = [
     "HTTPAgentError",
     "ProtocolAdapter",
     "OpenAPIHttpAdapter",
+    "A2AAdapter",
     "create_adapter",
 ]
