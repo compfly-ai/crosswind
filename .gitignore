@@ -32,3 +32,4 @@ htmlcov/
 !README.md
 !LICENSE
 !CONTRIBUTING.md
+.DS_Store

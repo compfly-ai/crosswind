@@ -1327,6 +1327,7 @@ func (g *ScenarioGenerator) parseScenarios(content string, evalType string) ([]m
 		ToolContext              []string `json:"toolContext,omitempty"`
 		AgenticAttackVector      string   `json:"agenticAttackVector,omitempty"`
 		MaestroThreat            string   `json:"maestroThreat,omitempty"`
+		OwaspAsiThreat           string   `json:"owaspAsiThreat,omitempty"`
 		FullSuccessIndicators    []string `json:"fullSuccessIndicators,omitempty"`
 		PartialSuccessIndicators []string `json:"partialSuccessIndicators,omitempty"`
 		RegulatoryMapping        []string `json:"regulatoryMapping,omitempty"`
@@ -1385,6 +1386,7 @@ func (g *ScenarioGenerator) parseScenarios(content string, evalType string) ([]m
 			ToolContext:              raw.ToolContext,
 			AgenticAttackVector:      agenticAttackVector,
 			MaestroThreat:            raw.MaestroThreat,
+			OwaspAsiThreat:           raw.OwaspAsiThreat,
 			FullSuccessIndicators:    raw.FullSuccessIndicators,
 			PartialSuccessIndicators: raw.PartialSuccessIndicators,
 			RegulatoryMapping:        raw.RegulatoryMapping,

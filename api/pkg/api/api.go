@@ -52,6 +52,7 @@ type DatasetUsed = models.DatasetUsed
 type ScenarioSetUsed = models.ScenarioSetUsed
 type SummaryScores = models.SummaryScores
 type ThreatAnalysis = models.ThreatAnalysis
+type TrustAnalysis = models.TrustAnalysis
 type RefusalAnalysis = models.RefusalAnalysis
 type Compliance = models.Compliance
 type EvalRunConfigRequest = models.EvalRunConfigRequest
