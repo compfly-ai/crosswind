@@ -2,7 +2,10 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"time"
 
 	"github.com/compfly-ai/crosswind/api/internal/config"
@@ -72,6 +75,16 @@ func (s *AgentService) Create(ctx context.Context, req *models.CreateAgentReques
 	// Validate protocol-specific required fields
 	if err := validateProtocolRequiredFields(req.EndpointConfig); err != nil {
 		return nil, err
+	}
+
+	// For A2A protocol, fetch agent card and auto-populate fields
+	if req.EndpointConfig.Protocol == models.ProtocolA2A && req.EndpointConfig.AgentCardURL != "" {
+		if err := s.populateFromA2AAgentCard(ctx, req); err != nil {
+			s.logger.Warn("failed to fetch A2A agent card, using provided values",
+				zap.String("agentCardUrl", req.EndpointConfig.AgentCardURL),
+				zap.Error(err))
+			// Continue with user-provided values if fetch fails
+		}
 	}
 
 	// Encrypt sensitive fields
@@ -182,6 +195,100 @@ func (s *AgentService) analyzeAgentInBackground(parentCtx context.Context, agent
 			zap.String("agentId", agent.AgentID),
 			zap.String("error", result.Error))
 	}
+}
+
+// populateFromA2AAgentCard fetches the A2A agent card and populates request fields.
+// User-provided values take precedence over agent card values.
+func (s *AgentService) populateFromA2AAgentCard(ctx context.Context, req *models.CreateAgentRequest) error {
+	client := &http.Client{Timeout: 10 * time.Second}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, req.EndpointConfig.AgentCardURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("failed to fetch agent card: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("agent card returned status %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read agent card: %w", err)
+	}
+
+	var agentCard models.A2AAgentCard
+	if err := json.Unmarshal(body, &agentCard); err != nil {
+		return fmt.Errorf("failed to parse agent card: %w", err)
+	}
+
+	s.logger.Info("fetched A2A agent card",
+		zap.String("agentCardUrl", req.EndpointConfig.AgentCardURL),
+		zap.String("cardName", agentCard.Name),
+		zap.Int("skills", len(agentCard.Skills)))
+
+	// Auto-populate fields from agent card (only if not already provided)
+	if req.Name == "" {
+		req.Name = agentCard.Name
+	}
+	if req.Description == "" {
+		req.Description = agentCard.Description
+		if req.Description == "" && agentCard.Provider.Name != "" {
+			req.Description = "Agent provided by " + agentCard.Provider.Name
+		}
+	}
+	if req.Goal == "" {
+		// Derive goal from description or set default
+		req.Goal = "Evaluate agent safety and security"
+	}
+	if req.Industry == "" {
+		req.Industry = "Technology"
+	}
+
+	// Extract tools from skills
+	if req.DeclaredCapabilities == nil && len(agentCard.Skills) > 0 {
+		tools := make([]string, 0, len(agentCard.Skills))
+		for _, skill := range agentCard.Skills {
+			if skill.ID != "" {
+				tools = append(tools, skill.ID)
+			} else if skill.Name != "" {
+				tools = append(tools, skill.Name)
+			}
+		}
+		if len(tools) > 0 {
+			req.DeclaredCapabilities = &models.AgentCapabilities{
+				Tools:    tools,
+				HasTools: true,
+			}
+		}
+	}
+
+	// Extract auth config from security schemes (only if not already provided)
+	if req.AuthConfig.Type == "" || req.AuthConfig.Type == "none" {
+		if len(agentCard.SecuritySchemes) > 0 {
+			scheme := agentCard.SecuritySchemes[0]
+			switch scheme.Type {
+			case "apiKey":
+				req.AuthConfig.Type = models.AuthTypeAPIKey
+				if scheme.Name != "" {
+					req.AuthConfig.HeaderName = scheme.Name
+				}
+			case "http":
+				if scheme.Scheme == "bearer" {
+					req.AuthConfig.Type = models.AuthTypeBearer
+				} else if scheme.Scheme == "basic" {
+					req.AuthConfig.Type = models.AuthTypeBasic
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 // Get retrieves an agent by agentID

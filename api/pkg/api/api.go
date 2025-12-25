@@ -38,6 +38,18 @@ type DiscoveredCapabilities = models.DiscoveredCapabilities
 var DefaultRateLimits = models.DefaultRateLimits
 
 // ============================================================================
+// A2A Protocol Models (Agent-to-Agent spec v0.3)
+// ============================================================================
+
+type A2AAgentCard = models.A2AAgentCard
+type A2AProvider = models.A2AProvider
+type A2ACapabilities = models.A2ACapabilities
+type A2AInterface = models.A2AInterface
+type A2ASecurityScheme = models.A2ASecurityScheme
+type A2ASkill = models.A2ASkill
+type A2AExtension = models.A2AExtension
+
+// ============================================================================
 // Eval Models
 // ============================================================================
 
