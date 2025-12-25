@@ -51,8 +51,9 @@ type Config struct {
 // Load reads configuration from environment variables
 func Load() (*Config, error) {
 	// Load .env file if it exists (check parent dirs for monorepo structure)
-	godotenv.Load()
-	godotenv.Load("../../.env")
+	// Errors are ignored as .env files are optional
+	_ = godotenv.Load()
+	_ = godotenv.Load("../../.env")
 
 	// Build Redis URL from REDIS_URL or REDIS_HOST/REDIS_PASSWORD
 	redisURL := os.Getenv("REDIS_URL")

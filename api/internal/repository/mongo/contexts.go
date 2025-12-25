@@ -41,7 +41,8 @@ func NewContextsRepository(db *mongo.Database) *ContextsRepository {
 		},
 	}
 
-	coll.Indexes().CreateMany(ctx, indexes)
+	// Ignore index creation errors (indexes may already exist)
+	_, _ = coll.Indexes().CreateMany(ctx, indexes)
 
 	return &ContextsRepository{collection: coll}
 }

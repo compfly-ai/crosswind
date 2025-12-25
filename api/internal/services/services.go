@@ -92,10 +92,11 @@ func (s *Services) HealthCheck(ctx context.Context) error {
 	// Check MongoDB by attempting a simple operation using agents collection
 	_, _, err := s.repos.Agents.List(ctx, "", 1, 0)
 	if err != nil && err.Error() != "mongo: no documents in result" {
-		// If it's not a "not found" error, it's a real error
-		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			// Ignore "not found" errors as expected for health check
+		// If it's a context error, return it
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return err
 		}
+		// Otherwise ignore "not found" errors as expected for health check
 	}
 
 	// Check Redis

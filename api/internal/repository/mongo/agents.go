@@ -36,7 +36,8 @@ func NewAgentsRepository(db *mongo.Database) *AgentsRepository {
 		},
 	}
 
-	coll.Indexes().CreateMany(ctx, indexes)
+	// Ignore index creation errors (indexes may already exist)
+	_, _ = coll.Indexes().CreateMany(ctx, indexes)
 
 	return &AgentsRepository{collection: coll}
 }

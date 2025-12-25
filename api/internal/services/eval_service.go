@@ -219,7 +219,7 @@ func (s *EvalService) Create(ctx context.Context, agentID string, req *models.Cr
 
 	if err := s.queue.EnqueueEvalJob(ctx, job); err != nil {
 		// Update status to failed if we can't enqueue
-		s.evalRunRepo.UpdateStatus(ctx, runID, models.EvalStatusFailed)
+		_ = s.evalRunRepo.UpdateStatus(ctx, runID, models.EvalStatusFailed)
 		return nil, err
 	}
 
@@ -480,7 +480,7 @@ func (s *EvalService) Rerun(ctx context.Context, runID string) (*models.CreateEv
 			zap.String("newRunId", newRunID),
 			zap.Error(err))
 		// Update status to failed if we can't enqueue
-		s.evalRunRepo.UpdateStatus(ctx, newRunID, models.EvalStatusFailed)
+		_ = s.evalRunRepo.UpdateStatus(ctx, newRunID, models.EvalStatusFailed)
 		return nil, err
 	}
 
@@ -506,6 +506,6 @@ func generateRunID() string {
 	now := time.Now()
 	// Generate 6 random bytes (12 hex chars) for uniqueness
 	randBytes := make([]byte, 6)
-	rand.Read(randBytes)
+	_, _ = rand.Read(randBytes)
 	return fmt.Sprintf("run_%s_%s", now.Format("20060102"), hex.EncodeToString(randBytes))
 }

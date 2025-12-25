@@ -55,7 +55,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --extra dev
 
       - name: Lint
         run: uv run ruff check src/
@@ -64,7 +64,7 @@ jobs:
         run: uv run mypy src/crosswind --ignore-missing-imports
 
       - name: Test
-        run: uv run pytest tests/ -v --tb=short || echo "No tests yet"
+        run: uv run pytest tests/ -v --tb=short
 
   python-context-processor:
     name: Python Context Processor
@@ -84,7 +84,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --extra dev
 
       - name: Lint
         run: uv run ruff check src/ || echo "Ruff not configured"
@@ -98,29 +98,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Build API
-        uses: docker/build-push-action@v6
-        with:
-          context: ./api
-          push: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+        run: docker build ./api
 
       - name: Build Worker
-        uses: docker/build-push-action@v6
-        with:
-          context: ./worker
-          push: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+        run: docker build ./worker
 
       - name: Build Context Processor
-        uses: docker/build-push-action@v6
-        with:
-          context: ./context-processor
-          push: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+        run: docker build ./context-processor

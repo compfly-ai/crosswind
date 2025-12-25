@@ -233,7 +233,9 @@ func TestAgentCRUDFlow(t *testing.T) {
 		router.ServeHTTP(createW, createReq)
 
 		var createResp map[string]interface{}
-		json.Unmarshal(createW.Body.Bytes(), &createResp)
+		if err := json.Unmarshal(createW.Body.Bytes(), &createResp); err != nil {
+			t.Fatalf("failed to unmarshal create response: %v", err)
+		}
 		agentID := createResp["agentId"].(string)
 
 		// Now GET the agent
@@ -246,7 +248,9 @@ func TestAgentCRUDFlow(t *testing.T) {
 		}
 
 		var getResp map[string]interface{}
-		json.Unmarshal(getW.Body.Bytes(), &getResp)
+		if err := json.Unmarshal(getW.Body.Bytes(), &getResp); err != nil {
+			t.Fatalf("failed to unmarshal get response: %v", err)
+		}
 
 		if getResp["name"] != "Get Test Agent" {
 			t.Errorf("expected name 'Get Test Agent', got %v", getResp["name"])
@@ -264,7 +268,9 @@ func TestAgentCRUDFlow(t *testing.T) {
 		}
 
 		var response map[string]interface{}
-		json.Unmarshal(w.Body.Bytes(), &response)
+		if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+			t.Fatalf("failed to unmarshal list response: %v", err)
+		}
 
 		agents := response["agents"].([]interface{})
 		if len(agents) < 2 {

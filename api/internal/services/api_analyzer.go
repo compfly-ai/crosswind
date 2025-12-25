@@ -549,15 +549,9 @@ Based on the probe results, determine:
 // cleanJSONResponse removes markdown code blocks from JSON response
 func cleanJSONResponse(content string) string {
 	content = strings.TrimSpace(content)
-	if strings.HasPrefix(content, "```json") {
-		content = strings.TrimPrefix(content, "```json")
-	}
-	if strings.HasPrefix(content, "```") {
-		content = strings.TrimPrefix(content, "```")
-	}
-	if strings.HasSuffix(content, "```") {
-		content = strings.TrimSuffix(content, "```")
-	}
+	content = strings.TrimPrefix(content, "```json")
+	content = strings.TrimPrefix(content, "```")
+	content = strings.TrimSuffix(content, "```")
 	return strings.TrimSpace(content)
 }
 

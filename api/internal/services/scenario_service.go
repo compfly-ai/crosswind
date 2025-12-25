@@ -194,7 +194,7 @@ func (s *ScenarioService) ExecuteGeneration(ctx context.Context, setID string) {
 			zap.String("agentId", set.AgentID),
 			zap.Error(err),
 		)
-		s.scenarios.UpdateStatusWithError(ctx, setID, models.ScenarioStatusFailed, "agent not found")
+		_ = s.scenarios.UpdateStatusWithError(ctx, setID, models.ScenarioStatusFailed, "agent not found")
 		return
 	}
 
@@ -301,8 +301,8 @@ func (s *ScenarioService) runGeneration(ctx context.Context, setID string, agent
 	logger.Info("starting scenario generation with planning")
 
 	// Update status to generating and start planning phase
-	s.scenarios.UpdateStatus(ctx, setID, models.ScenarioStatusGenerating)
-	s.scenarios.UpdateStage(ctx, setID, models.StagePlanning, "Analyzing agent capabilities and creating generation plan...")
+	_ = s.scenarios.UpdateStatus(ctx, setID, models.ScenarioStatusGenerating)
+	_ = s.scenarios.UpdateStage(ctx, setID, models.StagePlanning, "Analyzing agent capabilities and creating generation plan...")
 
 	plan, err := s.generator.PlanGeneration(ctx, agent, config)
 	if err != nil {
@@ -324,7 +324,7 @@ func (s *ScenarioService) runGeneration(ctx context.Context, setID string, agent
 	}
 
 	// Step 2: Execute batches
-	s.scenarios.UpdateStage(ctx, setID, models.StageGenerating, "Generating scenarios...")
+	_ = s.scenarios.UpdateStage(ctx, setID, models.StageGenerating, "Generating scenarios...")
 
 	var allScenarios []models.Scenario
 	totalGenerated := 0
@@ -375,7 +375,7 @@ func (s *ScenarioService) runGeneration(ctx context.Context, setID string, agent
 		}
 
 		// Update stage message to show progress
-		s.scenarios.UpdateStage(ctx, setID, models.StageGenerating,
+		_ = s.scenarios.UpdateStage(ctx, setID, models.StageGenerating,
 			fmt.Sprintf("Generated %d of %d scenarios...", totalGenerated, plan.RecommendedCount))
 
 		logger.Info("batch complete",
@@ -387,15 +387,15 @@ func (s *ScenarioService) runGeneration(ctx context.Context, setID string, agent
 
 	if len(allScenarios) == 0 {
 		logger.Error("all batches failed, no scenarios generated")
-		s.scenarios.UpdateStage(ctx, setID, models.StageFailed, "All generation batches failed")
-		s.scenarios.UpdateStatusWithError(ctx, setID, models.ScenarioStatusFailed, "all generation batches failed")
+		_ = s.scenarios.UpdateStage(ctx, setID, models.StageFailed, "All generation batches failed")
+		_ = s.scenarios.UpdateStatusWithError(ctx, setID, models.ScenarioStatusFailed, "all generation batches failed")
 		return
 	}
 
 	logger.Info("all batches complete", zap.Int("totalScenarios", len(allScenarios)))
 
 	// Step 3: Finalize - scenarios already saved incrementally, just update summary and status
-	s.scenarios.UpdateStage(ctx, setID, models.StageComplete, "Finalizing...")
+	_ = s.scenarios.UpdateStage(ctx, setID, models.StageComplete, "Finalizing...")
 
 	summary := calculateSummary(allScenarios)
 
@@ -405,7 +405,7 @@ func (s *ScenarioService) runGeneration(ctx context.Context, setID string, agent
 	}
 	if err := s.scenarios.UpdateStatus(ctx, setID, models.ScenarioStatusReady); err != nil {
 		logger.Error("failed to update status to ready", zap.Error(err))
-		s.scenarios.UpdateStage(ctx, setID, models.StageFailed, "Failed to finalize")
+		_ = s.scenarios.UpdateStage(ctx, setID, models.StageFailed, "Failed to finalize")
 		return
 	}
 
@@ -422,13 +422,13 @@ func (s *ScenarioService) generateWithoutPlan(ctx context.Context, setID string,
 
 	// Update stage: preparing context
 	if len(config.ContextIDs) > 0 {
-		s.scenarios.UpdateStage(ctx, setID, models.StagePreparingContext, "Fetching context documents...")
+		_ = s.scenarios.UpdateStage(ctx, setID, models.StagePreparingContext, "Fetching context documents...")
 	} else {
-		s.scenarios.UpdateStage(ctx, setID, models.StageGenerating, "Preparing generation request...")
+		_ = s.scenarios.UpdateStage(ctx, setID, models.StageGenerating, "Preparing generation request...")
 	}
 
 	time.Sleep(100 * time.Millisecond)
-	s.scenarios.UpdateStage(ctx, setID, models.StageGenerating, "Calling LLM to generate scenarios...")
+	_ = s.scenarios.UpdateStage(ctx, setID, models.StageGenerating, "Calling LLM to generate scenarios...")
 
 	progressCallback := func(generated int) {
 		if err := s.scenarios.UpdateProgress(ctx, setID, generated, config.Count); err != nil {
@@ -439,24 +439,24 @@ func (s *ScenarioService) generateWithoutPlan(ctx context.Context, setID string,
 	scenarios, err := s.generator.GenerateScenariosWithProgress(ctx, agent, config, progressCallback)
 	if err != nil {
 		logger.Error("scenario generation failed", zap.Error(err))
-		s.scenarios.UpdateStage(ctx, setID, models.StageFailed, "Generation failed")
+		_ = s.scenarios.UpdateStage(ctx, setID, models.StageFailed, "Generation failed")
 		errorMsg := err.Error()
 		if len(errorMsg) > 500 {
 			errorMsg = errorMsg[:500] + "..."
 		}
-		s.scenarios.UpdateStatusWithError(ctx, setID, models.ScenarioStatusFailed, errorMsg)
+		_ = s.scenarios.UpdateStatusWithError(ctx, setID, models.ScenarioStatusFailed, errorMsg)
 		return
 	}
 
 	logger.Info("generated scenarios successfully", zap.Int("count", len(scenarios)))
-	s.scenarios.UpdateStage(ctx, setID, models.StageComplete, "Saving scenarios...")
+	_ = s.scenarios.UpdateStage(ctx, setID, models.StageComplete, "Saving scenarios...")
 
 	summary := calculateSummary(scenarios)
 
 	if err := s.scenarios.UpdateScenarios(ctx, setID, scenarios, summary); err != nil {
 		logger.Error("failed to save scenarios", zap.Error(err))
-		s.scenarios.UpdateStage(ctx, setID, models.StageFailed, "Failed to save scenarios")
-		s.scenarios.UpdateStatusWithError(ctx, setID, models.ScenarioStatusFailed, "failed to save scenarios: "+err.Error())
+		_ = s.scenarios.UpdateStage(ctx, setID, models.StageFailed, "Failed to save scenarios")
+		_ = s.scenarios.UpdateStatusWithError(ctx, setID, models.ScenarioStatusFailed, "failed to save scenarios: "+err.Error())
 		return
 	}
 
@@ -723,6 +723,6 @@ func generateScenarioSetID() string {
 	now := time.Now()
 	// Generate 6 random bytes (12 hex chars) for uniqueness
 	randBytes := make([]byte, 6)
-	rand.Read(randBytes)
+	_, _ = rand.Read(randBytes)
 	return fmt.Sprintf("scn_set_%s_%s", now.Format("20060102"), hex.EncodeToString(randBytes))
 }

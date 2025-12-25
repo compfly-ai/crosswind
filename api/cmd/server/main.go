@@ -52,7 +52,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to initialize logger: %v", err)
 	}
-	defer logger.Sync()
+	defer func() { _ = logger.Sync() }()
 
 	// Load configuration
 	cfg, err := config.Load()
@@ -75,7 +75,7 @@ func main() {
 	if err != nil {
 		logger.Fatal("failed to connect to MongoDB", zap.Error(err))
 	}
-	defer mongoClient.Disconnect(context.Background())
+	defer func() { _ = mongoClient.Disconnect(context.Background()) }()
 
 	// Initialize Redis queue
 	redisQueue, err := queue.NewRedisQueue(cfg.RedisURL)

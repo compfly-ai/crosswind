@@ -25,8 +25,8 @@ func NewDatasetsRepository(db *mongo.Database) *DatasetsRepository {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// Datasets indexes
-	datasetsCol.Indexes().CreateMany(ctx, []mongo.IndexModel{
+	// Datasets indexes (ignore errors as indexes may already exist)
+	_, _ = datasetsCol.Indexes().CreateMany(ctx, []mongo.IndexModel{
 		{
 			Keys:    bson.D{{Key: "datasetId", Value: 1}, {Key: "version", Value: 1}},
 			Options: options.Index().SetUnique(true),
@@ -36,8 +36,8 @@ func NewDatasetsRepository(db *mongo.Database) *DatasetsRepository {
 		},
 	})
 
-	// Prompts indexes
-	promptsCol.Indexes().CreateMany(ctx, []mongo.IndexModel{
+	// Prompts indexes (ignore errors as indexes may already exist)
+	_, _ = promptsCol.Indexes().CreateMany(ctx, []mongo.IndexModel{
 		{
 			Keys:    bson.D{{Key: "datasetId", Value: 1}, {Key: "version", Value: 1}, {Key: "promptId", Value: 1}},
 			Options: options.Index().SetUnique(true),

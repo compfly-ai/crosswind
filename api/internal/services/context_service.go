@@ -133,7 +133,7 @@ func (s *ContextService) uploadFiles(ctx context.Context, contextID string, file
 				zap.String("file", fh.Filename),
 				zap.Error(err),
 			)
-			s.repos.Contexts.UpdateFileStatus(ctx, contextID, fh.Filename, models.FileStatusFailed, map[string]interface{}{
+			_ = s.repos.Contexts.UpdateFileStatus(ctx, contextID, fh.Filename, models.FileStatusFailed, map[string]interface{}{
 				"error": err.Error(),
 			})
 			failCount++
@@ -151,7 +151,7 @@ func (s *ContextService) uploadFiles(ctx context.Context, contextID string, file
 					zap.String("file", fh.Filename),
 					zap.Error(readErr),
 				)
-				s.repos.Contexts.UpdateFileStatus(ctx, contextID, fh.Filename, models.FileStatusFailed, map[string]interface{}{
+				_ = s.repos.Contexts.UpdateFileStatus(ctx, contextID, fh.Filename, models.FileStatusFailed, map[string]interface{}{
 					"error": readErr.Error(),
 				})
 				failCount++
@@ -171,7 +171,7 @@ func (s *ContextService) uploadFiles(ctx context.Context, contextID string, file
 				zap.String("file", fh.Filename),
 				zap.Error(err),
 			)
-			s.repos.Contexts.UpdateFileStatus(ctx, contextID, fh.Filename, models.FileStatusFailed, map[string]interface{}{
+			_ = s.repos.Contexts.UpdateFileStatus(ctx, contextID, fh.Filename, models.FileStatusFailed, map[string]interface{}{
 				"error": err.Error(),
 			})
 			failCount++
@@ -181,7 +181,7 @@ func (s *ContextService) uploadFiles(ctx context.Context, contextID string, file
 
 		// For text-based files, mark as ready immediately with extracted text
 		if textContent != "" {
-			s.repos.Contexts.UpdateFileStatus(ctx, contextID, fh.Filename, models.FileStatusReady, map[string]interface{}{
+			_ = s.repos.Contexts.UpdateFileStatus(ctx, contextID, fh.Filename, models.FileStatusReady, map[string]interface{}{
 				"extractedText":  textContent,
 				"extractedChars": len(textContent),
 			})
@@ -193,7 +193,7 @@ func (s *ContextService) uploadFiles(ctx context.Context, contextID string, file
 			)
 		} else {
 			// Binary files (PDF, Excel, etc.) need worker processing
-			s.repos.Contexts.UpdateFileStatus(ctx, contextID, fh.Filename, models.FileStatusProcessing, nil)
+			_ = s.repos.Contexts.UpdateFileStatus(ctx, contextID, fh.Filename, models.FileStatusProcessing, nil)
 			s.logger.Info("uploaded binary file to storage, awaiting worker processing",
 				zap.String("contextId", contextID),
 				zap.String("file", fh.Filename),
@@ -205,11 +205,11 @@ func (s *ContextService) uploadFiles(ctx context.Context, contextID string, file
 
 	// Update context status based on results
 	if failCount == len(files) {
-		s.repos.Contexts.UpdateStatus(ctx, contextID, models.ContextStatusFailed, "all files failed to upload")
+		_ = s.repos.Contexts.UpdateStatus(ctx, contextID, models.ContextStatusFailed, "all files failed to upload")
 		return fmt.Errorf("all files failed to upload")
 	} else if readyCount == successCount {
 		// All files are text-based and processed - context is ready
-		s.repos.Contexts.UpdateStatus(ctx, contextID, models.ContextStatusReady, "")
+		_ = s.repos.Contexts.UpdateStatus(ctx, contextID, models.ContextStatusReady, "")
 		s.logger.Info("context ready (all text files processed inline)",
 			zap.String("contextId", contextID),
 			zap.Int("files", readyCount),

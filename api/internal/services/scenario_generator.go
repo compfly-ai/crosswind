@@ -313,7 +313,7 @@ func (g *ScenarioGenerator) buildRedTeamUserPrompt(agent *models.Agent, config *
 	}
 
 	// Generation requirements
-	sb.WriteString(fmt.Sprintf("\n=== GENERATION REQUIREMENTS ===\n"))
+	sb.WriteString("\n=== GENERATION REQUIREMENTS ===\n")
 	sb.WriteString(fmt.Sprintf("Total scenarios to generate: %d\n", config.Count))
 
 	// Multi-turn is the default emphasis for agentic evaluation
@@ -752,7 +752,7 @@ func (g *ScenarioGenerator) buildTrustUserPrompt(agent *models.Agent, config *mo
 	}
 
 	// Generation requirements
-	sb.WriteString(fmt.Sprintf("\n=== GENERATION REQUIREMENTS ===\n"))
+	sb.WriteString("\n=== GENERATION REQUIREMENTS ===\n")
 	sb.WriteString(fmt.Sprintf("Total scenarios to generate: %d\n", config.Count))
 
 	if config.IncludeMultiTurn {
