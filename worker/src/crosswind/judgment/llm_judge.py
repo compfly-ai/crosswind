@@ -1,11 +1,15 @@
 """LLM-based judgment for complex cases."""
 
 import json
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
 from crosswind.config import settings
+
+if TYPE_CHECKING:
+    from openai import AsyncOpenAI
+
 from crosswind.models import Judgment, JudgmentMode, JudgmentResult, Message, Prompt, RefusalQuality
 
 logger = structlog.get_logger()
@@ -221,7 +225,7 @@ class LLMJudge:
             use_compact_prompt: Force compact/detailed prompt. If None, auto-detect based on model.
         """
         self.model = model
-        self._client = None
+        self._client: AsyncOpenAI | None = None
 
         # Auto-detect prompt style based on model
         if use_compact_prompt is None:
@@ -229,7 +233,7 @@ class LLMJudge:
         else:
             self.use_compact_prompt = use_compact_prompt
 
-    async def _get_client(self):  # type: ignore[no-untyped-def]
+    async def _get_client(self) -> "AsyncOpenAI":
         """Lazily initialize the OpenAI client."""
         if self._client is None:
             from openai import AsyncOpenAI

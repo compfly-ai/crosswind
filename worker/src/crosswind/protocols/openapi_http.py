@@ -231,16 +231,18 @@ class OpenAPIHttpAdapter(ProtocolAdapter):
             if choices and len(choices) > 0:
                 choice = choices[0]
                 if "message" in choice:
-                    return choice["message"].get("content", "")
+                    content = choice["message"].get("content", "")
+                    return str(content) if content else ""
                 elif "text" in choice:
-                    return choice["text"]
+                    return str(choice["text"])
 
         # Simple formats
         for field in ["response", "message", "content", "text", "answer"]:
             if field in response_data:
                 val = response_data[field]
                 if isinstance(val, dict):
-                    return val.get("content", str(val))
+                    content = val.get("content")
+                    return str(content) if content is not None else str(val)
                 return str(val)
 
         return str(response_data)
@@ -293,7 +295,8 @@ class OpenAPIHttpAdapter(ProtocolAdapter):
                     session_id = self._extract_session_id_from_response(data)
                     if session_id:
                         return session_id
-                    return data.get("session_id", data.get("id", str(uuid4())))
+                    sid = data.get("session_id") or data.get("id")
+                    return str(sid) if sid else str(uuid4())
                 except Exception as e:
                     logger.warning("Failed to create session via endpoint", error=str(e))
 
@@ -382,7 +385,7 @@ class OpenAPIHttpAdapter(ProtocolAdapter):
     ) -> str:
         """Resolve final session ID from request, response body, or headers."""
         if self.schema and self.schema.session_id_in_header:
-            header_session = response_headers.get(self.schema.session_id_in_header)
+            header_session: str | None = response_headers.get(self.schema.session_id_in_header)
             if header_session:
                 return header_session
 
@@ -435,8 +438,8 @@ class OpenAPIHttpAdapter(ProtocolAdapter):
                             continue
 
         except httpx.HTTPStatusError:
-            response = await self.send_message(request)
-            yield response.content
+            fallback_response = await self.send_message(request)
+            yield fallback_response.content
 
     async def close_session(self, session_id: str) -> None:
         """Close a conversation session."""

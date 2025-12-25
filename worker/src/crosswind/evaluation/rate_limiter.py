@@ -25,7 +25,7 @@ class RateLimiter:
 
     def __init__(
         self,
-        redis: Redis,  # type: ignore[type-arg]
+        redis: Redis,
         agent_id: str,
         requests_per_minute: int,
         bucket_size: int | None = None,
@@ -90,7 +90,7 @@ class RateLimiter:
 
         while True:
             now = time.time()
-            result = await self.redis.eval(
+            result: int = await self.redis.eval(  # type: ignore[misc]
                 self._acquire_script,
                 1,
                 key,
@@ -119,7 +119,7 @@ class RateLimiter:
             Number of tokens available
         """
         key = f"{self.key_prefix}:bucket"
-        result = await self.redis.hget(key, "tokens")
+        result: bytes | None = await self.redis.hget(key, "tokens")  # type: ignore[misc]
         if result is None:
             return float(self.bucket_size)
         return float(result)

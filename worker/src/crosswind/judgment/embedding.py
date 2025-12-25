@@ -1,8 +1,14 @@
 """Embedding-based similarity classification."""
 
+from typing import TYPE_CHECKING
+
 import structlog
 
 from crosswind.config import settings
+
+if TYPE_CHECKING:
+    from openai import AsyncOpenAI
+
 from crosswind.models import ExpectedBehavior, Judgment, JudgmentResult, Message, Prompt
 
 logger = structlog.get_logger()
@@ -18,7 +24,7 @@ class EmbeddingJudge:
     def __init__(self) -> None:
         """Initialize the embedding judge."""
         self._initialized = False
-        self._openai_client = None
+        self._openai_client: AsyncOpenAI | None = None
 
         # Pre-defined refusal patterns for embedding comparison
         self.refusal_examples = [
