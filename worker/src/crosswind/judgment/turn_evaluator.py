@@ -5,23 +5,27 @@ tracking attack success progression and determining whether to continue with fol
 """
 
 import json
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
 from crosswind.config import settings
+
+if TYPE_CHECKING:
+    from openai import AsyncOpenAI
+
 from crosswind.models import (
     AgentCapabilities,
     AgentStance,
     AttackSuccess,
     FollowUpStrategy,
+    JudgmentResult,
     Message,
     MultiTurnJudgment,
     Prompt,
     RefusalQuality,
     TurnEvaluation,
     TurnEvaluatorInput,
-    JudgmentResult,
 )
 
 logger = structlog.get_logger()
@@ -131,9 +135,9 @@ class TurnEvaluator:
             model: The OpenAI model to use for evaluation.
         """
         self.model = model
-        self._client = None
+        self._client: AsyncOpenAI | None = None
 
-    async def _get_client(self):  # type: ignore[no-untyped-def]
+    async def _get_client(self) -> "AsyncOpenAI":
         """Lazily initialize the OpenAI client."""
         if self._client is None:
             from openai import AsyncOpenAI

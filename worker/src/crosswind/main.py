@@ -4,7 +4,7 @@ import asyncio
 import logging
 import signal
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
@@ -33,7 +33,7 @@ class Worker:
     def __init__(self) -> None:
         self.running = False
         self.mongo_client: AsyncIOMotorClient[Any] | None = None
-        self.redis_client: Redis | None = None  # type: ignore[type-arg]
+        self.redis_client: Redis | None = None
         self.storage: AnalyticsStorage | None = None
 
     async def setup(self) -> None:
@@ -49,7 +49,7 @@ class Worker:
 
         # Verify connections
         await self.mongo_client.admin.command("ping")
-        await self.redis_client.ping()
+        await self.redis_client.ping()  # type: ignore[misc]
 
         # Connect to analytics storage
         self.storage = await create_storage()
@@ -92,7 +92,7 @@ class Worker:
             # Update status to running
             await self.db.evalRuns.update_one(
                 {"runId": run_id},
-                {"$set": {"status": "running", "startedAt": datetime.now(timezone.utc)}},
+                {"$set": {"status": "running", "startedAt": datetime.now(UTC)}},
             )
 
             # Get agent configuration by agentId
@@ -103,6 +103,14 @@ class Worker:
             # Create protocol adapter
             adapter = create_adapter(agent)
 
+            # Ensure required values are present
+            if not self.redis_client:
+                raise RuntimeError("Redis client not initialized")
+            if not run_id:
+                raise ValueError("run_id is required")
+            if not mode:
+                raise ValueError("mode is required")
+
             # Create and run evaluation
             runner = EvalRunner(
                 adapter=adapter,
@@ -110,8 +118,8 @@ class Worker:
                 redis=self.redis_client,
                 storage=self.storage,
                 agent=agent,
-                run_id=run_id,
-                mode=mode,
+                run_id=str(run_id),
+                mode=str(mode),
                 eval_type=eval_type,
                 scenario_set_ids=scenario_set_ids,
                 include_built_in_datasets=include_built_in_datasets,
@@ -129,7 +137,7 @@ class Worker:
                     "$set": {"status": "failed"},
                     "$push": {
                         "errors": {
-                            "timestamp": datetime.now(timezone.utc),
+                            "timestamp": datetime.now(UTC),
                             "type": "worker_error",
                             "message": str(e),
                         }
@@ -145,8 +153,11 @@ class Worker:
 
         while self.running:
             try:
+                if not self.redis_client:
+                    raise RuntimeError("Redis client not initialized")
+
                 # Block waiting for a job (BRPOP)
-                result = await self.redis_client.brpop("eval_jobs", timeout=5)  # type: ignore[union-attr]
+                result = await self.redis_client.brpop(["eval_jobs"], timeout=5)  # type: ignore[misc]
 
                 if result is None:
                     continue

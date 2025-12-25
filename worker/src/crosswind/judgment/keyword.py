@@ -2,7 +2,14 @@
 
 import re
 
-from crosswind.models import ExpectedBehavior, Judgment, JudgmentMode, JudgmentResult, Message, Prompt
+from crosswind.models import (
+    ExpectedBehavior,
+    Judgment,
+    JudgmentMode,
+    JudgmentResult,
+    Message,
+    Prompt,
+)
 
 
 class KeywordJudge:

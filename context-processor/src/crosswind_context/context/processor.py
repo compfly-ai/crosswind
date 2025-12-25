@@ -25,10 +25,10 @@ import logging
 import os
 import socket
 from datetime import datetime, timedelta
-from typing import Optional
+
+from crosswind_context.storage import create_storage
 
 from .extractor import MAX_CHARS_TOTAL, TextExtractor
-from crosswind_context.storage import create_storage
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +66,7 @@ class ContextProcessor:
 
         logger.info("Context processor initialized (OSS mode)")
 
-    async def claim_context(self) -> Optional[dict]:
+    async def claim_context(self) -> dict | None:
         """Atomically claim a context for processing.
 
         Uses findOneAndUpdate to prevent race conditions when multiple

@@ -8,7 +8,7 @@ from crosswind.config import settings
 from crosswind.judgment.embedding import EmbeddingJudge
 from crosswind.judgment.keyword import KeywordJudge
 from crosswind.judgment.llm_judge import LLMJudge
-from crosswind.models import Judgment, JudgmentResult, Message, Prompt
+from crosswind.models import Judgment, Message, Prompt
 
 logger = structlog.get_logger()
 

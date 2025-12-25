@@ -2,6 +2,7 @@
 
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
+from types import TracebackType
 
 from crosswind.models import ConversationRequest, ConversationResponse
 
@@ -37,10 +38,12 @@ class ProtocolAdapter(ABC):
         pass
 
     @abstractmethod
-    async def send_message_streaming(
+    def send_message_streaming(
         self, request: ConversationRequest
     ) -> AsyncIterator[str]:
         """Send a message and stream response tokens.
+
+        This is an async generator - implementations should use `async def` with `yield`.
 
         Args:
             request: The conversation request
@@ -48,7 +51,7 @@ class ProtocolAdapter(ABC):
         Yields:
             Response tokens as they arrive
         """
-        pass
+        ...
 
     @abstractmethod
     async def close_session(self, session_id: str) -> None:
@@ -72,7 +75,12 @@ class ProtocolAdapter(ABC):
         """Async context manager entry."""
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:  # type: ignore[no-untyped-def]
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
         """Async context manager exit."""
         await self.cleanup()
 

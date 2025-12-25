@@ -43,6 +43,7 @@ async def create_storage() -> AnalyticsStorage:
         Connected AnalyticsStorage instance
     """
     backend = settings.analytics_backend.lower()
+    storage: AnalyticsStorage
 
     if backend == "none" or backend == "disabled":
         storage = NullStorage()

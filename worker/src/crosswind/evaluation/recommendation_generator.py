@@ -159,7 +159,7 @@ class RecommendationGenerator:
             raise ValueError("Empty response from LLM")
 
         result = json.loads(result_text)
-        recommendations = result.get("recommendations", [])
+        recommendations: list[dict[str, Any]] = result.get("recommendations", [])
 
         logger.info("Generated LLM recommendations", count=len(recommendations))
         return recommendations[:5]

@@ -62,11 +62,13 @@ class AgentCard:
         # Fall back to interfaces array
         for interface in self.interfaces:
             if interface.get("type") in ("http", "json-rpc"):
-                return interface.get("url", "")
+                url = interface.get("url", "")
+                return str(url) if url else ""
 
         # Fallback to first interface
         if self.interfaces:
-            return self.interfaces[0].get("url", "")
+            url = self.interfaces[0].get("url", "")
+            return str(url) if url else ""
 
         return ""
 
@@ -176,6 +178,7 @@ class A2AAdapter(ProtocolAdapter):
     async def send_message(self, request: ConversationRequest) -> ConversationResponse:
         """Send a message via A2A protocol."""
         await self._ensure_agent_card()
+        assert self._endpoint is not None  # Set by _ensure_agent_card
 
         start_time = time.monotonic()
         latest_message = request.messages[-1].content
@@ -242,7 +245,7 @@ class A2AAdapter(ProtocolAdapter):
     def _is_task_response(self, response_data: dict[str, Any]) -> bool:
         """Check if response is a task (async) vs direct message."""
         result = response_data.get("result", {})
-        return result.get("kind") == "task"
+        return bool(result.get("kind") == "task")
 
     def _extract_content(self, response_data: dict[str, Any]) -> str:
         """Extract text content from A2A response."""
@@ -288,6 +291,8 @@ class A2AAdapter(ProtocolAdapter):
         """Poll for task completion for async tasks."""
         import asyncio
 
+        assert self._endpoint is not None  # Set by _ensure_agent_card
+
         result = initial_response.get("result", {})
         task_id = result.get("taskId")
 
@@ -303,7 +308,7 @@ class A2AAdapter(ProtocolAdapter):
                 params={"taskId": task_id},
             )
 
-            response = await self.client.post(
+            poll_response = await self.client.post(
                 self._endpoint,
                 json=jsonrpc_request,
                 headers={
@@ -312,11 +317,11 @@ class A2AAdapter(ProtocolAdapter):
                 },
             )
 
-            if response.status_code != 200:
+            if poll_response.status_code != 200:
                 logger.warning("Failed to poll task", task_id=task_id)
                 break
 
-            task_data = response.json()
+            task_data = poll_response.json()
             task_result = task_data.get("result", {})
             state = task_result.get("state", "")
 
@@ -341,14 +346,15 @@ class A2AAdapter(ProtocolAdapter):
         indicate support. Falls back to non-streaming otherwise.
         """
         await self._ensure_agent_card()
+        assert self._endpoint is not None  # Set by _ensure_agent_card
 
         # Check if agent supports streaming
         if not (self.agent_card and self.agent_card.capabilities.get("streaming")):
             logger.debug(
                 "Agent does not support streaming, falling back to non-streaming"
             )
-            response = await self.send_message(request)
-            yield response.content
+            fallback_response = await self.send_message(request)
+            yield fallback_response.content
             return
 
         latest_message = request.messages[-1].content
@@ -385,10 +391,10 @@ class A2AAdapter(ProtocolAdapter):
                     "Accept": "text/event-stream",
                 },
                 timeout=request.timeout_seconds,
-            ) as response:
-                response.raise_for_status()
+            ) as stream_response:
+                stream_response.raise_for_status()
 
-                async for line in response.aiter_lines():
+                async for line in stream_response.aiter_lines():
                     if not line or line.startswith(":"):
                         # Empty line or comment, skip
                         continue
@@ -422,8 +428,8 @@ class A2AAdapter(ProtocolAdapter):
 
         except httpx.HTTPStatusError as e:
             logger.warning("A2A streaming failed, falling back", error=str(e))
-            response = await self.send_message(request)
-            yield response.content
+            fallback_response = await self.send_message(request)
+            yield fallback_response.content
 
     async def close_session(self, session_id: str) -> None:
         """Close a conversation session.
