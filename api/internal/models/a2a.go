@@ -66,13 +66,3 @@ type A2AExtension struct {
 	URI         string `json:"uri"`                   // REQUIRED: Extension identifier URI
 	Description string `json:"description,omitempty"` // OPTIONAL: Extension purpose
 }
-
-// A2AAgentSpecResponse contains the agent card and pre-populated agent object
-type A2AAgentSpecResponse struct {
-	// Raw agent card data (for display purposes)
-	AgentCard *A2AAgentCard `json:"agentCard"`
-
-	// Pre-populated Agent object - frontend can use to display/edit
-	// Fields like Goal, Industry, Credentials need user input
-	Agent *Agent `json:"agent"`
-}

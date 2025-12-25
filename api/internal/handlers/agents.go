@@ -5,7 +5,6 @@ import (
 	"io"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/compfly-ai/crosswind/api/internal/models"
 	"github.com/compfly-ai/crosswind/api/internal/services"
@@ -29,10 +28,45 @@ func NewAgentHandlers(svc *services.Services, logger *zap.Logger) *AgentHandlers
 
 // Create handles POST /v1/agents
 func (h *AgentHandlers) Create(c *gin.Context) {
-	var req models.CreateAgentRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		respondWithError(c, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body", err.Error())
+	// Read body for protocol detection
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		respondWithError(c, http.StatusBadRequest, "INVALID_REQUEST", "Failed to read request body", nil)
 		return
+	}
+
+	// Check if this is an A2A agent (lenient parsing for protocol detection)
+	var protocolCheck struct {
+		EndpointConfig struct {
+			Protocol string `json:"protocol"`
+		} `json:"endpointConfig"`
+	}
+	_ = json.Unmarshal(body, &protocolCheck)
+
+	var req models.CreateAgentRequest
+	if protocolCheck.EndpointConfig.Protocol == models.ProtocolA2A {
+		// For A2A, use lenient parsing (no required field validation)
+		// Service will auto-populate from agent card
+		if err := json.Unmarshal(body, &req); err != nil {
+			respondWithError(c, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body", err.Error())
+			return
+		}
+		// Validate only agentId is required for A2A
+		if req.AgentID == "" {
+			respondWithError(c, http.StatusBadRequest, "INVALID_REQUEST", "agentId is required", nil)
+			return
+		}
+	} else {
+		// For other protocols, use strict gin binding with required field validation
+		if err := json.Unmarshal(body, &req); err != nil {
+			respondWithError(c, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body", err.Error())
+			return
+		}
+		// Manual validation for non-A2A protocols
+		if req.AgentID == "" || req.Name == "" || req.Description == "" || req.Goal == "" || req.Industry == "" {
+			respondWithError(c, http.StatusBadRequest, "INVALID_REQUEST", "agentId, name, description, goal, and industry are required", nil)
+			return
+		}
 	}
 
 	agent, err := h.services.Agent.Create(c.Request.Context(), &req)
@@ -198,129 +232,4 @@ func (h *AgentHandlers) AnalyzeAPI(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, response)
-}
-
-// RetrieveAgentSpec handles GET /v1/agent-spec/:protocol/retrieve
-// Fetches agent metadata from external endpoint and returns pre-populated registration fields
-func (h *AgentHandlers) RetrieveAgentSpec(c *gin.Context) {
-	protocol := c.Param("protocol")
-
-	switch protocol {
-	case models.ProtocolA2A:
-		h.retrieveA2AAgentSpec(c)
-	default:
-		respondWithError(c, http.StatusBadRequest, "UNSUPPORTED_PROTOCOL", "Retrieve not supported for protocol: "+protocol, nil)
-	}
-}
-
-// retrieveA2AAgentSpec fetches A2A agent card and returns pre-populated agent
-func (h *AgentHandlers) retrieveA2AAgentSpec(c *gin.Context) {
-	agentCardURL := c.Query("url")
-	if agentCardURL == "" {
-		respondWithError(c, http.StatusBadRequest, "MISSING_URL", "url query parameter is required for A2A protocol", nil)
-		return
-	}
-
-	// Create HTTP client with timeout
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
-
-	// Fetch the agent card
-	resp, err := client.Get(agentCardURL)
-	if err != nil {
-		h.logger.Warn("failed to fetch agent card", zap.Error(err), zap.String("url", agentCardURL))
-		respondWithError(c, http.StatusBadGateway, "FETCH_FAILED", "Failed to fetch agent card from URL", err.Error())
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		h.logger.Warn("agent card returned non-200 status", zap.Int("status", resp.StatusCode), zap.String("url", agentCardURL))
-		respondWithError(c, http.StatusBadGateway, "INVALID_RESPONSE", "Agent card URL returned error status", resp.StatusCode)
-		return
-	}
-
-	// Read and parse the agent card
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		respondWithError(c, http.StatusBadGateway, "READ_FAILED", "Failed to read agent card response", nil)
-		return
-	}
-
-	var agentCard models.A2AAgentCard
-	if err := json.Unmarshal(body, &agentCard); err != nil {
-		h.logger.Warn("failed to parse agent card JSON", zap.Error(err), zap.String("url", agentCardURL))
-		respondWithError(c, http.StatusBadGateway, "PARSE_FAILED", "Failed to parse agent card JSON", err.Error())
-		return
-	}
-
-	// Extract tools from skills
-	var tools []string
-	for _, skill := range agentCard.Skills {
-		if skill.ID != "" {
-			tools = append(tools, skill.ID)
-		} else if skill.Name != "" {
-			tools = append(tools, skill.Name)
-		}
-	}
-
-	// Build description (include provider if description is empty)
-	description := agentCard.Description
-	if description == "" && agentCard.Provider.Name != "" {
-		description = "Agent provided by " + agentCard.Provider.Name
-	}
-
-	// Build auth config from securitySchemes
-	authConfig := models.AuthConfig{
-		Type: models.AuthTypeNone, // Default, user will update
-	}
-	if len(agentCard.SecuritySchemes) > 0 {
-		scheme := agentCard.SecuritySchemes[0]
-		switch scheme.Type {
-		case "apiKey":
-			authConfig.Type = models.AuthTypeAPIKey
-			if scheme.Name != "" {
-				authConfig.HeaderName = scheme.Name
-			}
-		case "http":
-			if scheme.Scheme == "bearer" {
-				authConfig.Type = models.AuthTypeBearer
-			} else if scheme.Scheme == "basic" {
-				authConfig.Type = models.AuthTypeBasic
-			}
-		case "oauth2":
-			authConfig.Type = models.AuthTypeBearer
-		}
-		// Note: credentials left empty - user must provide
-	}
-
-	// Build Agent object
-	agent := &models.Agent{
-		AgentID:     agentCard.ID,
-		Name:        agentCard.Name,
-		Description: description,
-		Goal:        "", // User must provide
-		Industry:    "", // User must provide
-		EndpointConfig: models.EndpointConfig{
-			Protocol:     models.ProtocolA2A,
-			AgentCardURL: agentCardURL,
-		},
-		AuthConfig: authConfig,
-		Status:     models.AgentStatusActive,
-	}
-
-	// Add capabilities if we have tools
-	if len(tools) > 0 {
-		agent.DeclaredCapabilities = &models.AgentCapabilities{
-			Tools:    tools,
-			HasTools: true,
-		}
-	}
-
-	// Return agent card and pre-populated agent
-	c.JSON(http.StatusOK, models.A2AAgentSpecResponse{
-		AgentCard: &agentCard,
-		Agent:     agent,
-	})
 }
