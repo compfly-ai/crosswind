@@ -456,7 +456,7 @@ func TestAgentNotFound(t *testing.T) {
 	}
 
 	var response ErrorResponse
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 
 	if response.Error.Code != "AGENT_NOT_FOUND" {
 		t.Errorf("expected error code AGENT_NOT_FOUND, got %s", response.Error.Code)
