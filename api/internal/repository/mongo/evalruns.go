@@ -39,7 +39,7 @@ func NewEvalRunsRepository(db *mongo.Database) *EvalRunsRepository {
 		},
 	}
 
-	coll.Indexes().CreateMany(ctx, indexes)
+	_, _ = coll.Indexes().CreateMany(ctx, indexes)
 
 	return &EvalRunsRepository{collection: coll}
 }

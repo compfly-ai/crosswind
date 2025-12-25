@@ -36,7 +36,7 @@ func NewResultsRepository(db *mongo.Database) *ResultsRepository {
 		},
 	}
 
-	coll.Indexes().CreateMany(ctx, indexes)
+	_, _ = coll.Indexes().CreateMany(ctx, indexes)
 
 	return &ResultsRepository{collection: coll}
 }

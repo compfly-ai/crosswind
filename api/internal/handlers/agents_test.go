@@ -300,7 +300,7 @@ func TestAgentCRUDFlow(t *testing.T) {
 		router.ServeHTTP(createW, createReq)
 
 		var createResp map[string]interface{}
-		json.Unmarshal(createW.Body.Bytes(), &createResp)
+		_ = json.Unmarshal(createW.Body.Bytes(), &createResp)
 		agentID := createResp["agentId"].(string)
 
 		// Update the agent
@@ -320,7 +320,7 @@ func TestAgentCRUDFlow(t *testing.T) {
 		router.ServeHTTP(getW, getReq)
 
 		var getResp map[string]interface{}
-		json.Unmarshal(getW.Body.Bytes(), &getResp)
+		_ = json.Unmarshal(getW.Body.Bytes(), &getResp)
 
 		if getResp["name"] != "Updated Agent Name" {
 			t.Errorf("expected name 'Updated Agent Name', got %v", getResp["name"])
@@ -349,7 +349,7 @@ func TestAgentCRUDFlow(t *testing.T) {
 		router.ServeHTTP(createW, createReq)
 
 		var createResp map[string]interface{}
-		json.Unmarshal(createW.Body.Bytes(), &createResp)
+		_ = json.Unmarshal(createW.Body.Bytes(), &createResp)
 		agentID := createResp["agentId"].(string)
 
 		// Delete the agent
