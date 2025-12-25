@@ -9,7 +9,7 @@ from uuid import uuid4
 import httpx
 import structlog
 
-from crosswind.models import AuthConfig, ConversationRequest, ConversationResponse, Message
+from crosswind.models import AuthConfig, ConversationRequest, ConversationResponse
 from crosswind.protocols.base import ProtocolAdapter
 
 logger = structlog.get_logger()

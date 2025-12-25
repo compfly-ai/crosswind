@@ -21,7 +21,6 @@ import logging
 import tempfile
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -313,7 +312,7 @@ class TextExtractor:
         return "", {"error": f"Unsupported content type: {content_type}"}
 
 
-def extract_text_from_file(file_path: str, content_type: Optional[str] = None) -> tuple[str, dict]:
+def extract_text_from_file(file_path: str, content_type: str | None = None) -> tuple[str, dict]:
     """Convenience function to extract text from a file path.
 
     Args:

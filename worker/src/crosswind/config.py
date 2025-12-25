@@ -1,8 +1,8 @@
 """Configuration management for the eval worker."""
 
-from pydantic_settings import BaseSettings
+
 from pydantic import model_validator
-from typing import Optional
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -15,8 +15,8 @@ class Settings(BaseSettings):
     # Redis - supports both URL format and host/password format
     # Note: redis_url is always set after validation (defaults to localhost)
     redis_url: str = ""  # Set by validator
-    redis_host: Optional[str] = None
-    redis_password: Optional[str] = None
+    redis_host: str | None = None
+    redis_password: str | None = None
 
     # Analytics storage backend: "duckdb" (default), "clickhouse", or "none"
     analytics_backend: str = "duckdb"
@@ -25,11 +25,11 @@ class Settings(BaseSettings):
     duckdb_path: str = "./data/analytics.duckdb"
 
     # ClickHouse settings (for large-scale deployments)
-    clickhouse_url: Optional[str] = None
-    clickhouse_host: Optional[str] = None
+    clickhouse_url: str | None = None
+    clickhouse_host: str | None = None
     clickhouse_port: int = 8123
-    clickhouse_user: Optional[str] = None
-    clickhouse_password: Optional[str] = None
+    clickhouse_user: str | None = None
+    clickhouse_password: str | None = None
     clickhouse_database: str = "agent_eval"
 
     # Security (for decrypting agent credentials)
@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     # Storage (for context documents)
     storage_provider: str = "local"  # "local" or "gcs"
     data_dir: str = "./data"
-    gcs_bucket: Optional[str] = None
+    gcs_bucket: str | None = None
 
     # Logging
     log_level: str = "INFO"

@@ -11,9 +11,9 @@ from redis.asyncio import Redis
 from crosswind.config import settings
 from crosswind.evaluation.followup import detect_deflection_smart, generate_followup
 from crosswind.evaluation.rate_limiter import RateLimiter
+from crosswind.evaluation.recommendation_generator import RecommendationGenerator
 from crosswind.evaluation.session import SessionManager
 from crosswind.judgment import JudgmentPipeline, TurnEvaluator
-from crosswind.evaluation.recommendation_generator import RecommendationGenerator
 from crosswind.models import (
     AgentCapabilities,
     AttackSuccess,
@@ -33,13 +33,13 @@ from crosswind.storage.base import AnalyticsStorage, EvalDetail
 logger = structlog.get_logger()
 
 
-class EvalCancelled(Exception):
+class EvalCancelledError(Exception):
     """Raised when an evaluation is cancelled."""
 
     pass
 
 
-class CircuitBreakerTripped(Exception):
+class CircuitBreakerError(Exception):
     """Raised when circuit breaker trips due to too many errors."""
 
     def __init__(self, error_type: str, message: str) -> None:
@@ -182,7 +182,7 @@ class EvalRunner:
         if run_doc and run_doc.get("status") == "cancelled":
             self._cancelled = True
             self.log.info("Evaluation cancelled by user")
-            raise EvalCancelled("Evaluation was cancelled")
+            raise EvalCancelledError("Evaluation was cancelled")
 
     async def run(self) -> None:
         """Execute the full evaluation."""
@@ -214,10 +214,10 @@ class EvalRunner:
 
             self.log.info("Evaluation completed successfully")
 
-        except EvalCancelled:
+        except EvalCancelledError:
             self.log.info("Evaluation cancelled, cleaning up")
 
-        except CircuitBreakerTripped as e:
+        except CircuitBreakerError as e:
             self.log.error(
                 "Circuit breaker tripped",
                 error_type=e.error_type,
@@ -463,7 +463,7 @@ class EvalRunner:
             await self._check_cancelled()
 
             if self._circuit_breaker_tripped:
-                raise CircuitBreakerTripped(
+                raise CircuitBreakerError(
                     error_type="circuit_breaker",
                     message=self._circuit_breaker_reason or "Circuit breaker tripped",
                 )
@@ -656,7 +656,7 @@ class EvalRunner:
             if error_type in self._fatal_errors:
                 self._circuit_breaker_tripped = True
                 self._circuit_breaker_reason = f"Fatal error: {e.message}"
-                raise CircuitBreakerTripped(
+                raise CircuitBreakerError(
                     error_type=error_type,
                     message=f"Authentication/authorization failed: {e.message}",
                 )
@@ -667,7 +667,7 @@ class EvalRunner:
             if self._consecutive_errors >= self._consecutive_error_threshold:
                 self._circuit_breaker_tripped = True
                 self._circuit_breaker_reason = f"Too many consecutive errors ({self._consecutive_errors})"
-                raise CircuitBreakerTripped(
+                raise CircuitBreakerError(
                     error_type=error_type,
                     message=f"Too many consecutive errors: {self._consecutive_errors}",
                 )
@@ -693,7 +693,7 @@ class EvalRunner:
             if self._consecutive_errors >= self._consecutive_error_threshold:
                 self._circuit_breaker_tripped = True
                 self._circuit_breaker_reason = f"Too many consecutive timeouts ({self._consecutive_errors})"
-                raise CircuitBreakerTripped(
+                raise CircuitBreakerError(
                     error_type=error_type,
                     message=f"Too many consecutive timeouts: {self._consecutive_errors}",
                 )
@@ -719,7 +719,7 @@ class EvalRunner:
             if self._consecutive_errors >= self._consecutive_error_threshold:
                 self._circuit_breaker_tripped = True
                 self._circuit_breaker_reason = f"Too many consecutive errors ({self._consecutive_errors})"
-                raise CircuitBreakerTripped(
+                raise CircuitBreakerError(
                     error_type=error_type,
                     message=f"Too many consecutive errors: {self._consecutive_errors}",
                 )
@@ -750,7 +750,7 @@ class EvalRunner:
                 if self._rate_limit_retries >= self._max_rate_limit_retries:
                     self._circuit_breaker_tripped = True
                     self._circuit_breaker_reason = f"Rate limit exceeded after {self._rate_limit_retries} retries"
-                    raise CircuitBreakerTripped(
+                    raise CircuitBreakerError(
                         error_type="http_429",
                         message=f"Rate limit exceeded after {self._rate_limit_retries} retries",
                     )
@@ -780,7 +780,13 @@ class EvalRunner:
 
     def _doc_to_prompt(self, doc: dict[str, Any], dataset: dict[str, Any]) -> Prompt:
         """Convert a MongoDB document to a Prompt model."""
-        from crosswind.models import ConversationTurn, EvalType, ExpectedBehavior, JudgmentMode, Severity
+        from crosswind.models import (
+            ConversationTurn,
+            EvalType,
+            ExpectedBehavior,
+            JudgmentMode,
+            Severity,
+        )
 
         content = doc.get("content", "")
         if isinstance(content, list):

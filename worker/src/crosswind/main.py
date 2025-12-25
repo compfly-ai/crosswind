@@ -4,7 +4,7 @@ import asyncio
 import logging
 import signal
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
@@ -92,7 +92,7 @@ class Worker:
             # Update status to running
             await self.db.evalRuns.update_one(
                 {"runId": run_id},
-                {"$set": {"status": "running", "startedAt": datetime.now(timezone.utc)}},
+                {"$set": {"status": "running", "startedAt": datetime.now(UTC)}},
             )
 
             # Get agent configuration by agentId
@@ -129,7 +129,7 @@ class Worker:
                     "$set": {"status": "failed"},
                     "$push": {
                         "errors": {
-                            "timestamp": datetime.now(timezone.utc),
+                            "timestamp": datetime.now(UTC),
                             "type": "worker_error",
                             "message": str(e),
                         }

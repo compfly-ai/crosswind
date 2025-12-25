@@ -15,13 +15,13 @@ from crosswind.models import (
     AgentStance,
     AttackSuccess,
     FollowUpStrategy,
+    JudgmentResult,
     Message,
     MultiTurnJudgment,
     Prompt,
     RefusalQuality,
     TurnEvaluation,
     TurnEvaluatorInput,
-    JudgmentResult,
 )
 
 logger = structlog.get_logger()

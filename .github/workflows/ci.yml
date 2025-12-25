@@ -84,10 +84,10 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --group dev
 
       - name: Lint
-        run: uv run ruff check src/ || echo "Ruff not configured"
+        run: uv run ruff check src/
 
       - name: Test
         run: uv run pytest tests/ -v --tb=short || echo "No tests yet"
