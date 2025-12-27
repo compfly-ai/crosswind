@@ -14,12 +14,10 @@ from uuid import uuid4
 import httpx
 import structlog
 import websockets
+from websockets.client import WebSocketClientProtocol
 
 from crosswind.models import AuthConfig, ConversationRequest, ConversationResponse
 from crosswind.protocols.base import ProtocolAdapter
-
-# Type alias for WebSocket connection (websockets library uses ClientConnection in v13+)
-WebSocketConnection = Any
 
 logger = structlog.get_logger()
 
@@ -130,16 +128,9 @@ class A2AAdapter(ProtocolAdapter):
         self.agent_card: AgentCard | None = None
         self._endpoint: str | None = None
         self._interface_type: str = "http"  # "http" or "websocket"
-        self._ws_connections: dict[str, WebSocketConnection] = {}
+        self._ws_connections: dict[str, WebSocketClientProtocol] = {}
 
-    @property
-    def endpoint(self) -> str:
-        """Get the endpoint URL, raising if not yet loaded."""
-        if self._endpoint is None:
-            raise RuntimeError("Agent card not loaded. Call _ensure_agent_card() first.")
-        return self._endpoint
-
-    async def _get_ws_connection(self, session_id: str) -> WebSocketConnection:
+    async def _get_ws_connection(self, session_id: str) -> WebSocketClientProtocol:
         """Get or create WebSocket connection for a session.
 
         Each session maintains its own WebSocket connection for isolation.
@@ -147,11 +138,11 @@ class A2AAdapter(ProtocolAdapter):
         if session_id not in self._ws_connections:
             logger.debug(
                 "Creating WebSocket connection",
-                endpoint=self.endpoint,
+                endpoint=self._endpoint,
                 session_id=session_id,
             )
             ws = await websockets.connect(
-                self.endpoint,
+                self._endpoint,
                 additional_headers=self._auth_headers(),
             )
             self._ws_connections[session_id] = ws
@@ -199,7 +190,7 @@ class A2AAdapter(ProtocolAdapter):
             name=self.agent_card.name,
             version=self.agent_card.version,
             interface_type=self._interface_type,
-            endpoint=self.endpoint,
+            endpoint=self._endpoint,
         )
 
     async def cleanup(self) -> None:
@@ -255,7 +246,6 @@ class A2AAdapter(ProtocolAdapter):
         Routes to HTTP or WebSocket based on the agent card interface type.
         """
         await self._ensure_agent_card()
-        assert self._endpoint is not None  # Set by _ensure_agent_card
 
         if self._interface_type == "websocket":
             return await self._send_message_ws(request)
@@ -284,12 +274,12 @@ class A2AAdapter(ProtocolAdapter):
 
         logger.debug(
             "Sending A2A message via HTTP",
-            endpoint=self.endpoint,
+            endpoint=self._endpoint,
             session_id=request.session_id,
         )
 
         response = await self.client.post(
-            self.endpoint,
+            self._endpoint,
             json=jsonrpc_request,
             headers={
                 **self._auth_headers(),
@@ -304,7 +294,7 @@ class A2AAdapter(ProtocolAdapter):
             logger.warning(
                 "A2A HTTP error response",
                 status_code=response.status_code,
-                endpoint=self.endpoint,
+                endpoint=self._endpoint,
             )
             raise Exception(f"A2A request failed with status {response.status_code}")
 
@@ -351,7 +341,7 @@ class A2AAdapter(ProtocolAdapter):
 
         logger.debug(
             "Sending A2A message via WebSocket",
-            endpoint=self.endpoint,
+            endpoint=self._endpoint,
             session_id=session_id,
         )
 
@@ -429,8 +419,6 @@ class A2AAdapter(ProtocolAdapter):
         """Poll for task completion for async tasks via HTTP."""
         import asyncio
 
-        assert self._endpoint is not None  # Set by _ensure_agent_card
-
         result = initial_response.get("result", {})
         task_id = result.get("taskId")
 
@@ -446,8 +434,8 @@ class A2AAdapter(ProtocolAdapter):
                 params={"taskId": task_id},
             )
 
-            poll_response = await self.client.post(
-                self.endpoint,
+            response = await self.client.post(
+                self._endpoint,
                 json=jsonrpc_request,
                 headers={
                     **self._auth_headers(),
@@ -455,11 +443,11 @@ class A2AAdapter(ProtocolAdapter):
                 },
             )
 
-            if poll_response.status_code != 200:
+            if response.status_code != 200:
                 logger.warning("Failed to poll task", task_id=task_id)
                 break
 
-            task_data = poll_response.json()
+            task_data = response.json()
             task_result = task_data.get("result", {})
             state = task_result.get("state", "")
 
@@ -476,7 +464,7 @@ class A2AAdapter(ProtocolAdapter):
 
     async def _poll_task_completion_ws(
         self,
-        ws: WebSocketConnection,
+        ws: WebSocketClientProtocol,
         initial_response: dict[str, Any],
         timeout_seconds: float,
     ) -> str:
@@ -531,15 +519,14 @@ class A2AAdapter(ProtocolAdapter):
         Falls back to non-streaming if agent doesn't support streaming.
         """
         await self._ensure_agent_card()
-        assert self._endpoint is not None  # Set by _ensure_agent_card
 
         # Check if agent supports streaming
         if not (self.agent_card and self.agent_card.capabilities.get("streaming")):
             logger.debug(
                 "Agent does not support streaming, falling back to non-streaming"
             )
-            fallback_response = await self.send_message(request)
-            yield fallback_response.content
+            response = await self.send_message(request)
+            yield response.content
             return
 
         if self._interface_type == "websocket":
@@ -573,14 +560,14 @@ class A2AAdapter(ProtocolAdapter):
 
         logger.debug(
             "Sending A2A streaming message via HTTP SSE",
-            endpoint=self.endpoint,
+            endpoint=self._endpoint,
             session_id=request.session_id,
         )
 
         try:
             async with self.client.stream(
                 "POST",
-                self.endpoint,
+                self._endpoint,
                 json=jsonrpc_request,
                 headers={
                     **self._auth_headers(),
@@ -588,10 +575,10 @@ class A2AAdapter(ProtocolAdapter):
                     "Accept": "text/event-stream",
                 },
                 timeout=request.timeout_seconds,
-            ) as stream_response:
-                stream_response.raise_for_status()
+            ) as response:
+                response.raise_for_status()
 
-                async for line in stream_response.aiter_lines():
+                async for line in response.aiter_lines():
                     if not line or line.startswith(":"):
                         # Empty line or comment, skip
                         continue
@@ -623,8 +610,8 @@ class A2AAdapter(ProtocolAdapter):
 
         except httpx.HTTPStatusError as e:
             logger.warning("A2A HTTP streaming failed, falling back", error=str(e))
-            fallback_response = await self.send_message(request)
-            yield fallback_response.content
+            response = await self.send_message(request)
+            yield response.content
 
     async def _send_message_streaming_ws(
         self,
@@ -653,7 +640,7 @@ class A2AAdapter(ProtocolAdapter):
 
         logger.debug(
             "Sending A2A streaming message via WebSocket",
-            endpoint=self.endpoint,
+            endpoint=self._endpoint,
             session_id=session_id,
         )
 
@@ -705,8 +692,8 @@ class A2AAdapter(ProtocolAdapter):
         except Exception as e:
             logger.warning("WebSocket streaming error", error=str(e))
             # Fall back to non-streaming
-            fallback_response = await self._send_message_ws(request)
-            yield fallback_response.content
+            response = await self._send_message_ws(request)
+            yield response.content
 
     async def close_session(self, session_id: str) -> None:
         """Close a conversation session.
