@@ -1,12 +1,22 @@
 """Test A2A adapter WebSocket support."""
 
 import asyncio
+import os
+
+import pytest
+
 from crosswind.protocols.a2a_adapter import A2AAdapter, AgentCard
 from crosswind.models import ConversationRequest, Message
 
 
 # Test agent card URL (WebSocket-enabled test agent)
 TEST_AGENT_CARD_URL = "http://localhost:8905/.well-known/agent.json"
+
+# Skip integration tests in CI (no server available)
+skip_in_ci = pytest.mark.skipif(
+    os.environ.get("CI") == "true" or os.environ.get("GITHUB_ACTIONS") == "true",
+    reason="Integration tests require a running A2A server"
+)
 
 
 class TestAgentCardInterfaceDetection:
@@ -74,6 +84,7 @@ class TestAgentCardInterfaceDetection:
         assert url == "http://example.com/rpc"
 
 
+@skip_in_ci
 class TestA2AWebSocketIntegration:
     """Integration tests for A2A WebSocket support.
 
