@@ -1,8 +1,5 @@
 """Test A2A adapter WebSocket support."""
 
-import asyncio
-import os
-
 import pytest
 
 from crosswind.protocols.a2a_adapter import A2AAdapter, AgentCard
@@ -11,12 +8,6 @@ from crosswind.models import ConversationRequest, Message
 
 # Test agent card URL (WebSocket-enabled test agent)
 TEST_AGENT_CARD_URL = "http://localhost:8905/.well-known/agent.json"
-
-# Skip integration tests in CI (no server available)
-skip_in_ci = pytest.mark.skipif(
-    os.environ.get("CI") == "true" or os.environ.get("GITHUB_ACTIONS") == "true",
-    reason="Integration tests require a running A2A server"
-)
 
 
 class TestAgentCardInterfaceDetection:
@@ -84,11 +75,11 @@ class TestAgentCardInterfaceDetection:
         assert url == "http://example.com/rpc"
 
 
-@skip_in_ci
+@pytest.mark.usefixtures("a2a_test_server")
 class TestA2AWebSocketIntegration:
     """Integration tests for A2A WebSocket support.
 
-    Requires the WebSocket test agent to be running on port 8905/8906.
+    Uses the a2a_test_server fixture to start a test server automatically.
     """
 
     async def test_detects_websocket_interface(self):
@@ -147,12 +138,9 @@ class TestA2AWebSocketIntegration:
             response2 = await adapter.send_message(request2)
             print(f"Second response: {response2.content}")
 
-            # Verify both succeeded
-            assert "joke" in response1.content.lower() or any(
-                word in response1.content.lower()
-                for word in ["why", "what do", "gummy", "noodle"]
-            )
-            assert "time" in response2.content.lower() or ":" in response2.content
+            # Verify both succeeded (echo server returns "Echo: {input}")
+            assert "Echo:" in response1.content
+            assert "Echo:" in response2.content
 
             # Verify connection was created
             assert session_id in adapter._ws_connections
