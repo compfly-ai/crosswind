@@ -446,7 +446,7 @@ class A2AAdapter(ProtocolAdapter):
                 params={"taskId": task_id},
             )
 
-            response = await self.client.post(
+            poll_response = await self.client.post(
                 self.endpoint,
                 json=jsonrpc_request,
                 headers={
