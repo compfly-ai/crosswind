@@ -26,6 +26,8 @@ type EvalRun struct {
 	// TrustAnalysis: Aggregated quality analysis for trust evaluations
 	TrustAnalysis   *TrustAnalysis   `bson:"trustAnalysis,omitempty" json:"trustAnalysis,omitempty"`
 	Recommendations []Recommendation `bson:"recommendations,omitempty" json:"recommendations,omitempty"`
+	// ReportPath: Path to the generated HTML report in file storage
+	ReportPath           string                 `bson:"reportPath,omitempty" json:"reportPath,omitempty"`
 	Errors               []EvalError            `bson:"errors,omitempty" json:"errors,omitempty"`
 	StartedAt            *time.Time             `bson:"startedAt,omitempty" json:"startedAt,omitempty"`
 	CompletedAt          *time.Time             `bson:"completedAt,omitempty" json:"completedAt,omitempty"`

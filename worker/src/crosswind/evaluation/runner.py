@@ -28,6 +28,7 @@ from crosswind.models import (
 )
 from crosswind.protocols import HTTPAgentError
 from crosswind.protocols.base import ProtocolAdapter
+from crosswind.reports import ReportGenerator
 from crosswind.storage.base import AnalyticsStorage, EvalDetail
 
 logger = structlog.get_logger()
@@ -277,7 +278,9 @@ class EvalRunner:
     async def _load_datasets(self) -> list[dict[str, Any]]:
         """Load datasets for the evaluation mode and type."""
         mode_configs: dict[str, dict[str, int | bool]] = {
-            "quick": {"max_prompts": 50, "include_multiturn": True},
+            # Quick mode: runs curated quick_redteam (58) + quick_trust (56) datasets
+            # Set to 60 to ensure full OWASP ASI coverage from quick_redteam
+            "quick": {"max_prompts": 60, "include_multiturn": True},
             "standard": {"max_prompts": 2000, "include_multiturn": True},
             "deep": {"max_prompts": 10000, "include_multiturn": True},
         }
@@ -363,6 +366,17 @@ class EvalRunner:
             cursor = self.db.datasets.find(query)
             async for dataset in cursor:
                 datasets.append(dataset)
+
+            # In quick mode, prioritize curated "quick_" datasets to ensure OWASP coverage
+            if self.mode == "quick":
+                quick_datasets = [d for d in datasets if d.get("datasetId", "").startswith("quick_")]
+                other_datasets = [d for d in datasets if not d.get("datasetId", "").startswith("quick_")]
+                datasets = quick_datasets + other_datasets
+                self.log.info(
+                    "Quick mode: prioritizing curated datasets",
+                    quick_count=len(quick_datasets),
+                    other_count=len(other_datasets),
+                )
 
             self.log.info(
                 "Loaded shared datasets",
@@ -1144,6 +1158,126 @@ class EvalRunner:
             {"runId": self.run_id},
             {"$set": update_fields},
         )
+
+        # Generate HTML report
+        await self._generate_html_report(
+            summary_scores=summary_scores,
+            regulatory_compliance=regulatory_compliance,
+            recommendations=recommendations,
+            threat_analysis=threat_analysis,
+            performance_metrics=performance_metrics,
+        )
+
+    async def _generate_html_report(
+        self,
+        summary_scores: dict[str, Any],
+        regulatory_compliance: dict[str, Any],
+        recommendations: list[dict[str, Any]],
+        threat_analysis: dict[str, Any] | None,
+        performance_metrics: dict[str, Any],
+    ) -> None:
+        """Generate and store the HTML report."""
+        try:
+            # Fetch failures and sample passes from MongoDB
+            results_summary = await self.db.evalResultsSummary.find_one(
+                {"runId": self.run_id}
+            )
+            failures = results_summary.get("failures", []) if results_summary else []
+            sample_passes = results_summary.get("samplePasses", []) if results_summary else []
+
+            # Build trust analysis if applicable
+            trust_analysis = None
+            if self.eval_type == "trust":
+                trust_analysis = self._build_trust_analysis()
+
+            # Get eval run for timestamps
+            eval_run = await self.db.evalRuns.find_one({"runId": self.run_id})
+            started_at = eval_run.get("startedAt") if eval_run else None
+            completed_at = eval_run.get("completedAt") if eval_run else None
+
+            # Generate report
+            report_generator = ReportGenerator()
+            report_path = await report_generator.generate_report(
+                run_id=self.run_id,
+                agent=self.agent,
+                eval_type=self.eval_type,
+                mode=self.mode,
+                summary_scores=summary_scores,
+                regulatory_compliance=regulatory_compliance,
+                recommendations=recommendations,
+                failures=failures,
+                sample_passes=sample_passes,
+                threat_analysis=threat_analysis,
+                trust_analysis=trust_analysis,
+                performance_metrics=performance_metrics,
+                started_at=started_at,
+                completed_at=completed_at,
+            )
+
+            # Store report path in eval run
+            await self.db.evalRuns.update_one(
+                {"runId": self.run_id},
+                {"$set": {"reportPath": report_path}},
+            )
+
+            logger.info("HTML report generated", run_id=self.run_id, path=report_path)
+
+        except Exception as e:
+            # Report generation is non-critical, don't fail the eval
+            logger.warning(
+                "Failed to generate HTML report",
+                run_id=self.run_id,
+                error=str(e),
+            )
+
+    def _build_trust_analysis(self) -> dict[str, Any] | None:
+        """Build trust analysis from results (for trust evals)."""
+        if self.eval_type != "trust":
+            return None
+
+        # Group results by quality dimension
+        by_dimension: dict[str, dict[str, int]] = {}
+        for result in self.results:
+            # Extract dimension from category (e.g., "bias_age" -> "bias")
+            category = result.prompt.category
+            dimension = category.split("_")[0] if "_" in category else category
+
+            if dimension not in by_dimension:
+                by_dimension[dimension] = {"total": 0, "passed": 0, "failed": 0, "uncertain": 0}
+
+            by_dimension[dimension]["total"] += 1
+            if result.judgment.result == JudgmentResult.PASS:
+                by_dimension[dimension]["passed"] += 1
+            elif result.judgment.result == JudgmentResult.FAIL:
+                by_dimension[dimension]["failed"] += 1
+            else:
+                by_dimension[dimension]["uncertain"] += 1
+
+        # Calculate pass rates
+        for dim in by_dimension.values():
+            dim["passRate"] = dim["passed"] / dim["total"] if dim["total"] > 0 else 0
+
+        # Build top issues
+        top_issues = []
+        for dim_id, dim in sorted(
+            by_dimension.items(),
+            key=lambda x: x[1].get("passRate", 1),
+        ):
+            if dim["failed"] > 0:
+                failure_rate = dim["failed"] / dim["total"] if dim["total"] > 0 else 0
+                top_issues.append({
+                    "dimension": dim_id,
+                    "dimensionName": dim_id.replace("_", " ").title(),
+                    "failureRate": failure_rate,
+                    "severity": "critical" if failure_rate > 0.5 else "high" if failure_rate > 0.2 else "medium",
+                    "totalTests": dim["total"],
+                    "failedTests": dim["failed"],
+                })
+
+        return {
+            "byQualityDimension": by_dimension,
+            "topIssues": top_issues[:5],
+        }
 
     def _generate_recommendations(self) -> list[dict[str, Any]]:
         """Generate recommendations based on failures."""

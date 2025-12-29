@@ -119,6 +119,8 @@ func main() {
 		gcsClient := storage.NewGCSClient(fileStorage)
 		ctxSvc := services.NewContextService(repos, gcsClient, cfg.Environment, logger)
 		svc.SetContextService(ctxSvc)
+		// Wire up file storage to eval service for report retrieval
+		svc.Eval.SetFileStorage(fileStorage)
 		logger.Info("file storage initialized", zap.String("provider", string(storageCfg.Provider)))
 	}
 
@@ -192,6 +194,7 @@ func main() {
 		{
 			evals.GET("/:runId", h.Evals.Get)
 			evals.GET("/:runId/results", h.Evals.GetResults)
+			evals.GET("/:runId/report", h.Evals.GetReport)
 			evals.POST("/:runId/cancel", h.Evals.Cancel)
 			evals.POST("/:runId/rerun", h.Evals.Rerun)
 		}

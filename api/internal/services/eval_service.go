@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/compfly-ai/crosswind/api/internal/config"
@@ -12,6 +13,7 @@ import (
 	"github.com/compfly-ai/crosswind/api/internal/queue"
 	"github.com/compfly-ai/crosswind/api/internal/repository/clickhouse"
 	"github.com/compfly-ai/crosswind/api/pkg/repository"
+	"github.com/compfly-ai/crosswind/api/pkg/storage"
 	"go.mongodb.org/mongo-driver/bson"
 	mongodriver "go.mongodb.org/mongo-driver/mongo"
 	"go.uber.org/zap"
@@ -34,6 +36,7 @@ type EvalService struct {
 	resultsRepo  repository.ResultsRepository
 	queue        *queue.RedisQueue
 	clickhouse   *clickhouse.Client
+	fileStorage  storage.FileStorage
 	config       *config.Config
 	logger       *zap.Logger
 }
@@ -62,6 +65,11 @@ func NewEvalService(
 		config:       cfg,
 		logger:       logger,
 	}
+}
+
+// SetFileStorage sets the file storage for report retrieval
+func (s *EvalService) SetFileStorage(fs storage.FileStorage) {
+	s.fileStorage = fs
 }
 
 // Create creates a new evaluation run
@@ -508,4 +516,52 @@ func generateRunID() string {
 	randBytes := make([]byte, 6)
 	_, _ = rand.Read(randBytes)
 	return fmt.Sprintf("run_%s_%s", now.Format("20060102"), hex.EncodeToString(randBytes))
+}
+
+// GetReport retrieves the HTML report for a completed evaluation
+func (s *EvalService) GetReport(ctx context.Context, runID string) (io.ReadCloser, string, error) {
+	// Get the eval run first
+	run, err := s.evalRunRepo.FindByRunID(ctx, runID)
+	if err != nil {
+		if err == mongodriver.ErrNoDocuments {
+			return nil, "", ErrEvalRunNotFound
+		}
+		return nil, "", err
+	}
+
+	// Check if results are ready
+	if run.Status == models.EvalStatusPending || run.Status == models.EvalStatusRunning {
+		return nil, "", ErrResultsNotReady
+	}
+
+	// Check if report path exists
+	reportPath := run.ReportPath
+	if reportPath == "" {
+		// Try default path for backwards compatibility
+		reportPath = fmt.Sprintf("reports/%s/report.html", runID)
+	}
+
+	// Check if file storage is available
+	if s.fileStorage == nil {
+		return nil, "", ErrReportNotFound
+	}
+
+	// Check if report exists
+	exists, err := s.fileStorage.Exists(ctx, reportPath)
+	if err != nil || !exists {
+		return nil, "", ErrReportNotFound
+	}
+
+	// Download report
+	reader, err := s.fileStorage.Download(ctx, reportPath)
+	if err != nil {
+		s.logger.Error("failed to download report",
+			zap.String("runId", runID),
+			zap.String("path", reportPath),
+			zap.Error(err))
+		return nil, "", ErrReportNotFound
+	}
+
+	filename := fmt.Sprintf("crosswind-report-%s.html", runID)
+	return reader, filename, nil
 }

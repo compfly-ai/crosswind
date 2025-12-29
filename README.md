@@ -37,6 +37,10 @@ openssl rand -hex 32  # Add to .env as ENCRYPTION_KEY
 # Start services
 docker compose up -d
 
+# Seed the default evaluation datasets (required for meaningful reports)
+cd ../scripts && uv sync
+uv run python seed_datasets.py
+
 # Verify
 curl http://localhost:8080/health
 ```
@@ -66,23 +70,32 @@ curl -X POST http://localhost:8080/v1/agents \
   }'
 # Returns: {"id": "agent_abc123", ...}
 
-# 2. Run a quick security eval (~200 prompts)
+# 2. Run a quick security eval (~60 prompts, covers OWASP Agentic AI Top 10)
 curl -X POST http://localhost:8080/v1/agents/agent_abc123/evals \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"mode": "quick", "evalType": "red_team"}'
 # Returns: {"runId": "run_xyz789", ...}
 
-# 3. Check results
+# 3. Check status
+curl http://localhost:8080/v1/evals/run_xyz789 \
+  -H "Authorization: Bearer $API_KEY"
+
+# 4. Get results (JSON)
 curl http://localhost:8080/v1/evals/run_xyz789/results \
   -H "Authorization: Bearer $API_KEY"
+
+# 5. Download HTML report
+curl http://localhost:8080/v1/evals/run_xyz789/report \
+  -H "Authorization: Bearer $API_KEY" \
+  -o report.html
 ```
 
 ## Evaluation Modes
 
 | Mode | Prompts | Time | Use Case |
 |------|---------|------|----------|
-| `quick` | ~200 | 2-5 min | CI/CD gates, quick checks |
+| `quick` | ~60 | 1-2 min | CI/CD gates, quick checks (full OWASP coverage) |
 | `standard` | ~2,000 | 15-30 min | Regular testing |
 | `deep` | ~10,000 | 1-2 hrs | Pre-release audits |
 
@@ -122,16 +135,27 @@ Works with any agent that exposes an HTTP or WebSocket endpoint:
 
 ## Built-in Datasets
 
-Crosswind includes curated evaluation datasets from academic research.
-
-Most datasets require a [HuggingFace token](https://huggingface.co/settings/tokens). Some require explicit access approval on HuggingFace first (marked with 🔒).
+Crosswind includes curated evaluation datasets. The default datasets require no external dependencies and provide full OWASP Agentic AI Top 10 coverage.
 
 ```bash
 cd scripts && uv sync
+
+# Seed default curated datasets (recommended - no HuggingFace token needed)
+uv run python seed_datasets.py
+
+# Seed all datasets including HuggingFace sources (requires token)
 export HUGGINGFACE_TOKEN=hf_...
-uv run python seed_datasets.py          # Quick datasets (default)
-uv run python seed_datasets.py --all    # All datasets
+uv run python seed_datasets.py --all
 ```
+
+**Default Datasets** (curated, no external dependencies)
+
+| Dataset | Type | Prompts | Description |
+|---------|------|---------|-------------|
+| `quick_redteam` | Red Team | 58 | OWASP Agentic AI Top 10 (ASI01-ASI10) - tool misuse, prompt injection, memory poisoning, multi-turn escalation |
+| `quick_trust` | Trust | 56 | Agentic quality - hallucination, over-refusal, bias, multi-turn trust behaviors |
+
+**HuggingFace Datasets** (requires token, use `--all`)
 
 | Dataset | Type | Description |
 |---------|------|-------------|
@@ -145,11 +169,6 @@ uv run python seed_datasets.py --all    # All datasets
 | DecodingTrust | Trust | Privacy and truthfulness probes |
 | AgentHarm 🔒 | Red Team | Agentic harm scenarios (requires approval) |
 | WildJailbreak 🔒 | Red Team | In-the-wild jailbreaks (requires approval) |
-
-**Quick Datasets** (~200 prompts, no HuggingFace token needed)
-- `quick_general` - General safety across categories
-- `quick_agentic` - Agent-specific security scenarios
-- `quick_trust_agentic` - Agent quality and compliance
 
 ## Agent-Specific Scenarios
 

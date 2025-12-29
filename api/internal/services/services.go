@@ -21,6 +21,7 @@ var (
 	ErrEvalNotCancellable = errors.New("evaluation run cannot be cancelled")
 	ErrInvalidEvalMode    = errors.New("invalid evaluation mode")
 	ErrResultsNotReady    = errors.New("results not ready")
+	ErrReportNotFound     = errors.New("report not found")
 	ErrDatasetNotFound    = errors.New("dataset not found")
 	ErrGCSNotConfigured   = errors.New("GCS storage not configured")
 

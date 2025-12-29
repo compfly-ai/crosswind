@@ -71,12 +71,14 @@ health:
 	@curl -s http://localhost:8080/health | jq .
 	@curl -s http://localhost:8080/ready | jq .
 
-# Dataset seeding (uses HuggingFace datasets)
+# Dataset seeding
+# Default: Seeds curated agentic datasets (quick_agentic, quick_trust_agentic) - no external dependencies
 seed:
-	cd scripts && uv run python seed_datasets.py --red-team
+	cd scripts && uv run python seed_datasets.py
 
+# Seeds all OSS-safe datasets (requires HuggingFace downloads)
 seed-all:
 	cd scripts && uv run python seed_datasets.py --all
 
 seed-dry:
-	cd scripts && uv run python seed_datasets.py --red-team --dry-run
+	cd scripts && uv run python seed_datasets.py --dry-run
