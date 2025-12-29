@@ -59,7 +59,7 @@ class EvalRunner:
     def __init__(
         self,
         adapter: ProtocolAdapter,
-        db: AsyncIOMotorDatabase,  # type: ignore[type-arg]
+        db: AsyncIOMotorDatabase,
         redis: Redis,
         storage: AnalyticsStorage | None,
         agent: dict[str, Any],
@@ -1400,7 +1400,7 @@ class EvalRunner:
             return None
 
         # Group results by quality dimension
-        by_dimension: dict[str, dict[str, int]] = {}
+        by_dimension: dict[str, dict[str, int | float]] = {}
         for result in self.results:
             # Extract dimension from category (e.g., "bias_age" -> "bias")
             category = result.prompt.category

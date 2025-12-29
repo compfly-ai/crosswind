@@ -268,7 +268,7 @@ class ReportGenerator:
                 return f"Agent shows significant gaps in {worst.get('dimensionName', 'quality')} ({worst.get('failureRate', 0) * 100:.0f}% failure rate), which may impact regulatory compliance."
 
         # Generic finding based on failure categories
-        failure_categories = {}
+        failure_categories: dict[str, int] = {}
         for f in failures:
             cat = f.get("category", "unknown")
             failure_categories[cat] = failure_categories.get(cat, 0) + 1

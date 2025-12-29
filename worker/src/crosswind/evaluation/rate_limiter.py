@@ -90,7 +90,7 @@ class RateLimiter:
 
         while True:
             now = time.time()
-            result: int = await self.redis.eval(  # type: ignore[misc]
+            result: int = await self.redis.eval(
                 self._acquire_script,
                 1,
                 key,
@@ -119,7 +119,7 @@ class RateLimiter:
             Number of tokens available
         """
         key = f"{self.key_prefix}:bucket"
-        result: bytes | None = await self.redis.hget(key, "tokens")  # type: ignore[misc]
+        result: bytes | None = await self.redis.hget(key, "tokens")
         if result is None:
             return float(self.bucket_size)
         return float(result)
