@@ -96,7 +96,8 @@ class EvalRunner:
         self._start_time: datetime | None = None
         self._session_resets = 0
 
-        # Valid ExpectedBehavior enum values
+        # Valid ExpectedBehavior enum values (for red_team evals)
+        # Trust evals use pattern-based judgment and don't require expected_behavior
         self._valid_expected_behaviors = {"refuse", "comply", "comply_with_caveats", "redirect", "context_dependent", "comply_safe"}
 
         # Get rate limits
@@ -275,124 +276,288 @@ class EvalRunner:
         # Default to "refuse" for red_team evals (conservative - treat as attack scenario)
         return "refuse"
 
-    async def _load_datasets(self) -> list[dict[str, Any]]:
-        """Load datasets for the evaluation mode and type."""
-        mode_configs: dict[str, dict[str, int | bool]] = {
-            # Quick mode: runs curated quick_redteam (58) + quick_trust (56) datasets
-            # Set to 60 to ensure full OWASP ASI coverage from quick_redteam
-            "quick": {"max_prompts": 60, "include_multiturn": True},
-            "standard": {"max_prompts": 2000, "include_multiturn": True},
-            "deep": {"max_prompts": 10000, "include_multiturn": True},
-        }
+    # =========================================================================
+    # Dataset Loading
+    # =========================================================================
 
-        config = mode_configs.get(self.mode, mode_configs["standard"])
+    # Mode configuration: maps mode name to settings
+    # - max_prompts: 0 means no limit (use all prompts in dataset)
+    # - include_multiturn: whether to include multi-turn prompts
+    MODE_CONFIGS: dict[str, dict[str, int | bool]] = {
+        "quick": {"max_prompts": 0, "include_multiturn": True},
+        "standard": {"max_prompts": 2000, "include_multiturn": True},
+        "deep": {"max_prompts": 10000, "include_multiturn": True},
+    }
+
+    # Quick mode uses curated datasets mapped by eval_type
+    QUICK_DATASET_MAP: dict[str, str] = {
+        "red_team": "quick_redteam_v1",
+        "trust": "quick_trust_v1",
+    }
+
+    async def _load_datasets(self) -> list[dict[str, Any]]:
+        """Load datasets for the evaluation based on mode and type.
+
+        Dataset loading strategy by mode:
+        - quick: Uses ONLY the curated quick dataset for the eval_type
+        - standard: Uses all seeded datasets, sampled up to 2,000 prompts
+        - deep: Uses all seeded datasets, sampled up to 10,000 prompts
+
+        Scenario sets (custom agent-specific tests) can be added to any mode.
+
+        Returns:
+            List of dataset documents to evaluate against.
+
+        Raises:
+            ValueError: If quick mode dataset is not seeded.
+        """
+        # Initialize mode configuration
+        self._apply_mode_config()
+
+        # Load datasets from different sources
+        scenario_datasets = await self._load_scenario_sets()
+        builtin_datasets = await self._load_builtin_datasets()
+
+        # Combine: scenarios first, then built-in datasets
+        all_datasets = scenario_datasets + builtin_datasets
+
+        # Finalize prompt limits and update eval run
+        self._finalize_prompt_limits(scenario_datasets, builtin_datasets)
+        await self._update_eval_run_datasets(all_datasets)
+
+        return all_datasets
+
+    def _apply_mode_config(self) -> None:
+        """Apply mode-specific configuration settings."""
+        config = self.MODE_CONFIGS.get(self.mode, self.MODE_CONFIGS["standard"])
         self._max_prompts = int(config["max_prompts"])
         self._include_multiturn = bool(config["include_multiturn"])
-        self._prompts_remaining = self._max_prompts
 
-        datasets = []
+    async def _load_scenario_sets(self) -> list[dict[str, Any]]:
+        """Load custom scenario sets if provided.
+
+        Scenario sets are agent-specific test scenarios that can be
+        combined with any evaluation mode.
+
+        Returns:
+            List of scenario sets converted to dataset format.
+        """
+        if not self.scenario_set_ids:
+            return []
+
+        self.log.info("Loading scenario sets", scenario_set_ids=self.scenario_set_ids)
         scenario_datasets = []
 
-        # Load scenario sets if provided
-        if self.scenario_set_ids:
+        for set_id in self.scenario_set_ids:
+            dataset = await self._load_single_scenario_set(set_id)
+            if dataset:
+                scenario_datasets.append(dataset)
+
+        return scenario_datasets
+
+    async def _load_single_scenario_set(self, set_id: str) -> dict[str, Any] | None:
+        """Load and convert a single scenario set to dataset format.
+
+        Args:
+            set_id: The scenario set ID to load.
+
+        Returns:
+            Dataset-formatted dict or None if not found/ready.
+        """
+        scenario_set = await self.db.scenarioSets.find_one({"setId": set_id})
+
+        if not scenario_set or scenario_set.get("status") != "ready":
+            self.log.warn("Scenario set not found or not ready", set_id=set_id)
+            return None
+
+        scenarios = scenario_set.get("scenarios", [])
+        enabled_scenarios = [s for s in scenarios if s.get("enabled", True)]
+
+        if not enabled_scenarios:
+            return None
+
+        dataset = {
+            "datasetId": set_id,
+            "version": "1.0.0",
+            "evalType": scenario_set.get("config", {}).get("evalType", self.eval_type),
+            "category": "custom_scenario",
+            "isShared": False,
+            "prompts": [self._scenario_to_prompt(s, set_id, i) for i, s in enumerate(enabled_scenarios)],
+            "metadata": {
+                "promptCount": len(enabled_scenarios),
+                "source": "scenario_set",
+            },
+        }
+
+        self.log.info("Loaded scenario set", set_id=set_id, prompt_count=len(enabled_scenarios))
+        return dataset
+
+    def _scenario_to_prompt(self, scenario: dict[str, Any], set_id: str, index: int) -> dict[str, Any]:
+        """Convert a scenario document to prompt format.
+
+        Args:
+            scenario: The scenario document.
+            set_id: Parent scenario set ID.
+            index: Scenario index within the set.
+
+        Returns:
+            Prompt-formatted dict.
+        """
+        is_multiturn = scenario.get("multiTurn", False)
+        content = (
+            scenario.get("turns", [])
+            if is_multiturn and scenario.get("turns")
+            else scenario.get("prompt", "")
+        )
+
+        return {
+            "promptId": scenario.get("id", f"{set_id}_{index}"),
+            "content": content,
+            "category": scenario.get("category", "custom"),
+            "severity": scenario.get("severity", "medium"),
+            "attackType": scenario.get("scenarioType", "custom"),
+            "expectedBehavior": self._normalize_expected_behavior(scenario.get("expectedBehavior", "refuse")),
+            "isMultiturn": is_multiturn,
+            "metadata": {
+                "tags": scenario.get("tags", []),
+                "rationale": scenario.get("rationale", ""),
+                "tool": scenario.get("tool", ""),
+                "expectedBehaviorDescription": scenario.get("expectedBehaviorDescription", ""),
+            },
+        }
+
+    async def _load_builtin_datasets(self) -> list[dict[str, Any]]:
+        """Load built-in datasets based on mode.
+
+        For quick mode, loads only the curated quick dataset.
+        For standard/deep modes, loads all datasets matching eval_type.
+
+        Returns:
+            List of dataset documents.
+
+        Raises:
+            ValueError: If quick mode dataset is not found.
+        """
+        # Skip if scenario sets provided and built-in not explicitly requested
+        if self.scenario_set_ids and not self.include_built_in_datasets:
             self.log.info(
-                "Loading scenario sets",
-                scenario_set_ids=self.scenario_set_ids,
-            )
-            for set_id in self.scenario_set_ids:
-                scenario_set = await self.db.scenarioSets.find_one({"setId": set_id})
-                if scenario_set and scenario_set.get("status") == "ready":
-                    # Convert scenario set to dataset format
-                    scenarios = scenario_set.get("scenarios", [])
-                    enabled_scenarios = [s for s in scenarios if s.get("enabled", True)]
-
-                    if enabled_scenarios:
-                        # Create a pseudo-dataset from the scenario set
-                        scenario_dataset = {
-                            "datasetId": set_id,
-                            "version": "1.0.0",
-                            "evalType": scenario_set.get("config", {}).get("evalType", self.eval_type),
-                            "category": "custom_scenario",
-                            "isShared": False,
-                            "prompts": [
-                                {
-                                    "promptId": s.get("id", f"{set_id}_{i}"),
-                                    # For multi-turn scenarios, use turns array; otherwise use prompt string
-                                    "content": s.get("turns", []) if s.get("multiTurn", False) and s.get("turns") else s.get("prompt", ""),
-                                    "category": s.get("category", "custom"),
-                                    "severity": s.get("severity", "medium"),
-                                    "attackType": s.get("scenarioType", "custom"),
-                                    # Normalize expectedBehavior to valid enum value
-                                    # Store original as metadata for context
-                                    "expectedBehavior": self._normalize_expected_behavior(s.get("expectedBehavior", "refuse")),
-                                    "isMultiturn": s.get("multiTurn", False),
-                                    "metadata": {
-                                        "tags": s.get("tags", []),
-                                        "rationale": s.get("rationale", ""),
-                                        "tool": s.get("tool", ""),
-                                        "expectedBehaviorDescription": s.get("expectedBehaviorDescription", ""),
-                                    },
-                                }
-                                for i, s in enumerate(enabled_scenarios)
-                            ],
-                            "metadata": {
-                                "promptCount": len(enabled_scenarios),
-                                "source": "scenario_set",
-                            },
-                        }
-                        scenario_datasets.append(scenario_dataset)
-                        self.log.info(
-                            "Loaded scenario set",
-                            set_id=set_id,
-                            prompt_count=len(enabled_scenarios),
-                        )
-                else:
-                    self.log.warn(
-                        "Scenario set not found or not ready",
-                        set_id=set_id,
-                    )
-
-        # Load built-in datasets only if explicitly requested or no scenario sets provided
-        if self.include_built_in_datasets or not self.scenario_set_ids:
-            # Load shared datasets filtered by evalType
-            query: dict[str, Any] = {
-                "isShared": True,
-                "isActive": True,
-                "evalType": self.eval_type,
-            }
-            if not self._include_multiturn:
-                query["metadata.isMultiturn"] = {"$ne": True}
-
-            cursor = self.db.datasets.find(query)
-            async for dataset in cursor:
-                datasets.append(dataset)
-
-            # In quick mode, prioritize curated "quick_" datasets to ensure OWASP coverage
-            if self.mode == "quick":
-                quick_datasets = [d for d in datasets if d.get("datasetId", "").startswith("quick_")]
-                other_datasets = [d for d in datasets if not d.get("datasetId", "").startswith("quick_")]
-                datasets = quick_datasets + other_datasets
-                self.log.info(
-                    "Quick mode: prioritizing curated datasets",
-                    quick_count=len(quick_datasets),
-                    other_count=len(other_datasets),
-                )
-
-            self.log.info(
-                "Loaded shared datasets",
-                eval_type=self.eval_type,
-                dataset_count=len(datasets),
-            )
-        else:
-            self.log.info(
-                "Skipping built-in datasets (scenario sets provided, includeBuiltInDatasets=false)",
+                "Skipping built-in datasets (scenario sets provided)",
                 scenario_set_count=len(self.scenario_set_ids),
             )
+            return []
 
-        # Combine scenario datasets with built-in datasets
-        all_datasets = scenario_datasets + datasets
+        if self.mode == "quick":
+            return await self._load_quick_mode_dataset()
+        else:
+            return await self._load_standard_mode_datasets()
 
-        # Update eval run with datasets used
+    async def _load_quick_mode_dataset(self) -> list[dict[str, Any]]:
+        """Load the curated quick dataset for this eval_type.
+
+        Quick mode uses a single, curated dataset that provides
+        comprehensive coverage (e.g., OWASP Agentic AI Top 10) in
+        minimal time.
+
+        Returns:
+            List containing the single quick dataset.
+
+        Raises:
+            ValueError: If the quick dataset is not found or eval_type not supported.
+        """
+        dataset_id = self.QUICK_DATASET_MAP.get(self.eval_type)
+
+        if not dataset_id:
+            self.log.error("No quick dataset mapping for eval_type", eval_type=self.eval_type)
+            raise ValueError(f"Quick mode not supported for eval_type '{self.eval_type}'")
+
+        dataset = await self.db.datasets.find_one({
+            "datasetId": dataset_id,
+            "isShared": True,
+            "isActive": True,
+        })
+
+        if not dataset:
+            self.log.error(
+                "Quick mode dataset not found",
+                expected_dataset=dataset_id,
+                eval_type=self.eval_type,
+            )
+            raise ValueError(
+                f"Quick mode requires the '{dataset_id}' dataset. "
+                "Run 'make seed' or 'uv run python scripts/seed_datasets.py' to seed default datasets."
+            )
+
+        # Quick mode runs all prompts in the dataset
+        prompt_count = dataset.get("metadata", {}).get("promptCount", 100)
+        self._max_prompts = prompt_count
+
+        self.log.info(
+            "Quick mode: loaded curated dataset",
+            dataset_id=dataset_id,
+            prompt_count=prompt_count,
+        )
+
+        return [dataset]
+
+    async def _load_standard_mode_datasets(self) -> list[dict[str, Any]]:
+        """Load all shared datasets for the eval_type.
+
+        Used by standard and deep modes to provide broad coverage
+        across multiple datasets.
+
+        Returns:
+            List of matching dataset documents.
+        """
+        query: dict[str, Any] = {
+            "isShared": True,
+            "isActive": True,
+            "evalType": self.eval_type,
+        }
+
+        if not self._include_multiturn:
+            query["metadata.isMultiturn"] = {"$ne": True}
+
+        datasets = []
+        cursor = self.db.datasets.find(query)
+        async for dataset in cursor:
+            datasets.append(dataset)
+
+        self.log.info(
+            "Loaded shared datasets",
+            mode=self.mode,
+            eval_type=self.eval_type,
+            dataset_count=len(datasets),
+        )
+
+        return datasets
+
+    def _finalize_prompt_limits(
+        self,
+        scenario_datasets: list[dict[str, Any]],
+        builtin_datasets: list[dict[str, Any]],
+    ) -> None:
+        """Finalize prompt limits based on loaded datasets.
+
+        Args:
+            scenario_datasets: Loaded scenario set datasets.
+            builtin_datasets: Loaded built-in datasets.
+        """
+        # If only using scenarios (no built-in), use scenario count as limit
+        if scenario_datasets and not builtin_datasets:
+            total_scenario_prompts = sum(
+                len(ds.get("prompts", [])) for ds in scenario_datasets
+            )
+            self._max_prompts = total_scenario_prompts
+
+        # Set prompts remaining (0 means unlimited, use large number)
+        self._prompts_remaining = self._max_prompts if self._max_prompts > 0 else 999999
+
+    async def _update_eval_run_datasets(self, all_datasets: list[dict[str, Any]]) -> None:
+        """Update the eval run document with datasets being used.
+
+        Args:
+            all_datasets: All datasets that will be evaluated.
+        """
         datasets_used = [
             {
                 "datasetId": ds.get("datasetId"),
@@ -403,16 +568,6 @@ class EvalRunner:
             for ds in all_datasets
         ]
 
-        # Calculate total prompts from scenario sets
-        total_scenario_prompts = sum(
-            len(ds.get("prompts", [])) for ds in scenario_datasets
-        )
-
-        # If only using scenarios, adjust max prompts
-        if scenario_datasets and not datasets:
-            self._max_prompts = total_scenario_prompts
-            self._prompts_remaining = total_scenario_prompts
-
         await self.db.evalRuns.update_one(
             {"runId": self.run_id},
             {
@@ -422,8 +577,6 @@ class EvalRunner:
                 }
             },
         )
-
-        return all_datasets
 
     async def _run_dataset(self, dataset: dict[str, Any]) -> None:
         """Run evaluation for a single dataset."""
@@ -813,6 +966,17 @@ class EvalRunner:
         eval_type_str = doc.get("evalType") or dataset.get("evalType", "red_team")
         judgment_mode_str = doc.get("judgmentMode") or dataset.get("judgmentMode", "safety")
 
+        # Parse expected_behavior - None for trust evals if not a valid enum value
+        raw_expected = doc.get("expectedBehavior")
+        if raw_expected and raw_expected in self._valid_expected_behaviors:
+            expected_behavior = ExpectedBehavior(raw_expected)
+        elif eval_type_str == "red_team":
+            # Red team evals default to "refuse"
+            expected_behavior = ExpectedBehavior.REFUSE
+        else:
+            # Trust evals use pattern-based judgment, expected_behavior is optional
+            expected_behavior = None
+
         return Prompt(
             prompt_id=doc.get("promptId", doc.get("prompt_id", "")),
             dataset_id=dataset.get("datasetId", ""),
@@ -820,7 +984,7 @@ class EvalRunner:
             content=content,
             is_multiturn=doc.get("isMultiturn", isinstance(content, list)),
             turn_count=doc.get("turnCount", len(content) if isinstance(content, list) else 1),
-            expected_behavior=ExpectedBehavior(doc.get("expectedBehavior", "refuse")),
+            expected_behavior=expected_behavior,
             ground_truth_patterns=doc.get("groundTruthPatterns", []),
             failure_indicators=doc.get("failureIndicators", []),
             attack_type=doc.get("attackType", "unknown"),
