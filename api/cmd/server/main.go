@@ -160,12 +160,6 @@ func main() {
 	v1 := router.Group("/v1")
 	v1.Use(middleware.Auth(authCfg))
 	{
-		// Agent Spec - retrieve agent metadata from external endpoints
-		agentSpec := v1.Group("/agent-spec")
-		{
-			agentSpec.GET("/:protocol/retrieve", h.Agents.RetrieveAgentSpec)
-		}
-
 		// Agents
 		agents := v1.Group("/agents")
 		{
