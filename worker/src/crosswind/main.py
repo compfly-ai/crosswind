@@ -49,7 +49,7 @@ class Worker:
 
         # Verify connections
         await self.mongo_client.admin.command("ping")
-        await self.redis_client.ping()
+        await self.redis_client.ping()  # type: ignore[misc]
 
         # Connect to analytics storage
         self.storage = await create_storage()
@@ -157,7 +157,7 @@ class Worker:
                     raise RuntimeError("Redis client not initialized")
 
                 # Block waiting for a job (BRPOP)
-                result = await self.redis_client.brpop(["eval_jobs"], timeout=5)
+                result = await self.redis_client.brpop(["eval_jobs"], timeout=5)  # type: ignore[misc]
 
                 if result is None:
                     continue
