@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: Agent Eval API
+  title: Crosswind Agent Eval API
   description: |
     AI Agent Safety Evaluation Platform API.
 
@@ -66,6 +66,7 @@ info:
     2. Start an evaluation with `POST /agents/{agentId}/evals`
     3. Poll for status with `GET /evals/{runId}`
     4. Get results with `GET /evals/{runId}/results`
+    5. Download HTML report with `GET /evals/{runId}/report`
 
   version: 1.0.0
   contact:
@@ -1171,6 +1172,80 @@ paths:
           $ref: '#/components/responses/NotFound'
         '425':
           description: Results not ready yet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /evals/{runId}/report:
+    parameters:
+      - $ref: '#/components/parameters/runId'
+
+    get:
+      tags: [Evaluations]
+      summary: Download HTML report
+      description: |
+        Download a comprehensive HTML report for a completed evaluation.
+
+        The report includes:
+        - Executive summary with overall scores
+        - Threat analysis with OWASP Agentic AI Top 10 coverage (spider chart)
+        - Refusal quality analysis (donut chart showing how the agent refuses)
+        - Regulatory compliance scores (EU AI Act, NIST AI RMF, OWASP LLM Top 10)
+        - Detailed failure analysis with prompts and responses
+        - LLM-generated recommendations
+
+        ## Usage
+
+        **View in browser (inline):**
+        ```
+        GET /evals/{runId}/report
+        ```
+
+        **Download as file:**
+        ```
+        GET /evals/{runId}/report?download=true
+        ```
+
+        **Using curl:**
+        ```bash
+        curl "http://localhost:8080/v1/evals/{runId}/report?download=true" \
+          -H "Authorization: Bearer $API_KEY" \
+          -OJ
+        ```
+
+        The report is self-contained HTML with embedded CSS and SVG charts.
+        It can be viewed in any browser without external dependencies.
+      operationId: getEvalReport
+      parameters:
+        - name: download
+          in: query
+          description: |
+            When `true`, returns the report as an attachment for download.
+            When `false` (default), returns inline for browser viewing.
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: HTML report file
+          content:
+            text/html:
+              schema:
+                type: string
+                format: binary
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              description: |
+                When `download=true`: `attachment; filename="crosswind-report-{runId}.html"`
+                When `download=false`: `inline`
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '425':
+          description: Report not ready yet (evaluation still running)
           content:
             application/json:
               schema:

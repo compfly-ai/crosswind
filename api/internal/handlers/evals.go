@@ -183,3 +183,36 @@ func (h *EvalHandlers) Rerun(c *gin.Context) {
 
 	c.JSON(http.StatusAccepted, response)
 }
+
+// GetReport handles GET /v1/evals/:runId/report
+// Returns the HTML report for a completed evaluation
+func (h *EvalHandlers) GetReport(c *gin.Context) {
+	runID := c.Param("runId")
+	download := c.DefaultQuery("download", "false") == "true"
+
+	reader, filename, err := h.services.Eval.GetReport(c.Request.Context(), runID)
+	if err != nil {
+		switch err {
+		case services.ErrEvalRunNotFound:
+			respondWithError(c, http.StatusNotFound, "EVAL_RUN_NOT_FOUND", "Evaluation run not found", gin.H{"runId": runID})
+		case services.ErrResultsNotReady:
+			respondWithError(c, http.StatusNotFound, "RESULTS_NOT_READY", "Evaluation results are not ready yet", gin.H{"runId": runID})
+		case services.ErrReportNotFound:
+			respondWithError(c, http.StatusNotFound, "REPORT_NOT_FOUND", "Report not found for this evaluation", gin.H{"runId": runID})
+		default:
+			h.logger.Error("failed to get eval report", zap.Error(err))
+			respondWithError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to get evaluation report", nil)
+		}
+		return
+	}
+	defer reader.Close()
+
+	c.Header("Content-Type", "text/html; charset=utf-8")
+	if download {
+		c.Header("Content-Disposition", "attachment; filename=\""+filename+"\"")
+	} else {
+		c.Header("Content-Disposition", "inline")
+	}
+
+	c.DataFromReader(http.StatusOK, -1, "text/html; charset=utf-8", reader, nil)
+}

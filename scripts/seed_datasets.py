@@ -2,25 +2,28 @@
 """
 Dataset Seeder for Crosswind (OSS)
 
-Downloads and seeds evaluation datasets from HuggingFace into MongoDB.
-Datasets are stored in the `datasets` and `datasetPrompts` collections.
+Seeds evaluation datasets into MongoDB. By default, seeds curated agentic datasets
+that require no external dependencies. Use --all to download from HuggingFace.
+
+DEFAULT DATASETS (curated, no external dependencies):
+    - quick_redteam: 58 prompts (50 single + 8 multi-turn) covering OWASP Agentic AI Top 10
+    - quick_trust: 56 prompts (48 single + 8 multi-turn) for agentic quality testing
 
 DATASET VISIBILITY:
     - OSS-SAFE (visibility="full"): Content can be shown to users, no authorization needed
     - RESTRICTED (visibility="redacted"): Require HuggingFace authorization, content hidden in results
 
 Usage:
-    # Seed default quick datasets (recommended for first run)
+    # Seed curated default datasets (recommended for first run, no downloads required)
     uv run python scripts/seed_datasets.py
 
-    # Seed all OSS-safe datasets
+    # Seed all OSS-safe datasets (downloads from HuggingFace)
     uv run python scripts/seed_datasets.py --all
 
-    # Seed specific dataset types
+    # Seed specific dataset types (downloads from HuggingFace)
     uv run python scripts/seed_datasets.py --red-team     # Security datasets
     uv run python scripts/seed_datasets.py --trust        # Quality/bias datasets
     uv run python scripts/seed_datasets.py --agentic      # Agent-specific datasets
-    uv run python scripts/seed_datasets.py --quick        # Quick evaluation datasets
 
     # Seed RESTRICTED datasets (requires HuggingFace authorization)
     # These include: wildjailbreak, cosafe, agentharm, injecagent, agentpoison
@@ -127,6 +130,10 @@ class PromptData:
     harm_categories: list[str] = field(default_factory=list)
     regulatory_flags: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
+    # OWASP Agentic AI Top 10 threat code (ASI01-ASI10)
+    owasp_asi_threat: str | None = None
+    # Agentic attack vector for threat analysis
+    agentic_attack_vector: str | None = None
 
 
 class DatasetLoader(ABC):
@@ -3777,88 +3784,25 @@ class AgentPoisonLoader(DatasetLoader):
         return prompts
 
 
-class QuickGeneralLoader(DatasetLoader):
-    """Loader for quick_general_v1 dataset - mixed security + quality prompts."""
+class QuickRedTeamLoader(DatasetLoader):
+    """Loader for quick_redteam_v1 dataset - curated OWASP Agentic AI Top 10 prompts for security evaluation."""
 
     @property
     def metadata(self) -> DatasetMetadata:
         return DatasetMetadata(
-            dataset_id="quick_general_v1",
+            dataset_id="quick_redteam_v1",
             version="1.0",
-            name="Quick General Evaluation",
-            description="50 mixed prompts combining security (60%) and quality (40%) testing for overall agent assessment",
-            category="general",
-            subcategories=["security", "quality"],
-            source_name="Agent-Eval Curated",
-            source_url="https://github.com/anthropics/agent-eval",
-            paper_url=None,
-            contributors="Agent-Eval Team",
-            license_type="MIT",
-            license_url="https://opensource.org/licenses/MIT",
-            harm_categories=["goal_hijacking", "tool_misuse", "hallucination", "over_refusal"],
-            regulatory_alignments=["OWASP-ASI01", "EU-AI-ACT-Art13"],
-            visibility="full",
-            eval_type="general",
-            judgment_mode="safety",  # Will be handled specially for general evals
-        )
-
-    async def load_prompts(self) -> list[PromptData]:
-        """Load quick general prompts from JSON file."""
-        import json
-        from pathlib import Path
-
-        json_path = Path(__file__).parent.parent / "data" / "datasets" / "quick_general_v1.json"
-        print(f"Loading Quick General v1 from {json_path}...")
-
-        with open(json_path) as f:
-            data = json.load(f)
-
-        prompts = []
-        for idx, item in enumerate(tqdm(data.get("prompts", []), desc="Processing Quick General v1")):
-            # Determine if this is a security or quality prompt
-            is_security = item.get("evalDimension") == "security"
-
-            prompt = PromptData(
-                prompt_id=f"qg_{idx:03d}",
-                content=item["prompt"],
-                expected_behavior=item.get("expectedBehavior", "refuse" if is_security else "appropriate"),
-                ground_truth_patterns=item.get("groundTruthPatterns", []),
-                failure_indicators=item.get("failureIndicators", []),
-                attack_type=item.get("subcategory", "unknown"),
-                severity=item.get("severity", "medium"),
-                harm_categories=[item.get("category", "")],
-                regulatory_flags=[f"OWASP-{item.get('owaspAgenticCode', 'ASI01')}"] if is_security else ["EU-AI-ACT-Art13"],
-                metadata={
-                    "eval_dimension": item.get("evalDimension"),
-                    "owasp_agentic_code": item.get("owaspAgenticCode"),
-                    "tool_context": item.get("toolContext", []),
-                    "tags": item.get("tags", []),
-                    "subcategory": item.get("subcategory"),
-                },
-            )
-            prompts.append(prompt)
-
-        return prompts
-
-
-class QuickAgenticLoader(DatasetLoader):
-    """Loader for quick_agentic_v1 dataset - curated OWASP Agentic AI Top 10 prompts."""
-
-    @property
-    def metadata(self) -> DatasetMetadata:
-        return DatasetMetadata(
-            dataset_id="quick_agentic_v1",
-            version="1.0",
-            name="Quick Agentic Red Team",
-            description="50 curated high-signal prompts covering OWASP Agentic AI Top 10 (ASI01-ASI10) for agentic security evaluation",
-            category="agentic_security",
-            subcategories=["ASI01", "ASI02", "ASI03", "ASI04", "ASI05", "ASI06", "ASI07", "ASI08", "ASI09", "ASI10"],
-            source_name="Agent-Eval Curated",
-            source_url="https://github.com/anthropics/agent-eval",
+            name="Quick Red Team",
+            description="58 curated high-signal prompts covering OWASP Agentic AI Top 10 (ASI01-ASI10) for agentic security evaluation. Tests tool misuse, prompt injection, memory poisoning, privilege escalation, and multi-turn escalation attacks.",
+            category="red_team",
+            subcategories=["ASI01", "ASI02", "ASI03", "ASI04", "ASI05", "ASI06", "ASI07", "ASI08", "ASI09", "ASI10", "multi_turn_escalation"],
+            is_multiturn=True,
+            source_name="Crosswind Curated",
+            source_url="https://github.com/compfly-ai/crosswind",
             paper_url="https://owasp.org/www-project-agentic-ai/",
-            contributors="Agent-Eval Team",
-            license_type="MIT",
-            license_url="https://opensource.org/licenses/MIT",
+            contributors="Crosswind Team",
+            license_type="Apache-2.0",
+            license_url="https://www.apache.org/licenses/LICENSE-2.0",
             harm_categories=["goal_hijacking", "tool_misuse", "privilege_abuse", "supply_chain", "code_execution", "memory_poisoning", "inter_agent", "cascading_failure", "trust_boundary", "rogue_agent"],
             regulatory_alignments=["OWASP-ASI01", "OWASP-ASI02", "OWASP-ASI03", "OWASP-ASI04", "OWASP-ASI05", "OWASP-ASI06", "OWASP-ASI07", "OWASP-ASI08", "OWASP-ASI09", "OWASP-ASI10"],
             visibility="full",
@@ -3867,21 +3811,32 @@ class QuickAgenticLoader(DatasetLoader):
         )
 
     async def load_prompts(self) -> list[PromptData]:
-        """Load quick agentic prompts from JSON file."""
+        """Load quick red team prompts from JSON file."""
         import json
         from pathlib import Path
 
-        json_path = Path(__file__).parent.parent / "data" / "datasets" / "quick_agentic_v1.json"
-        print(f"Loading Quick Agentic v1 from {json_path}...")
+        json_path = Path(__file__).parent.parent / "data" / "datasets" / "quick_redteam_v1.json"
+        print(f"Loading Quick Red Team v1 from {json_path}...")
 
         with open(json_path) as f:
             data = json.load(f)
 
         prompts = []
-        for idx, item in enumerate(tqdm(data.get("prompts", []), desc="Processing Quick Agentic v1")):
+        for idx, item in enumerate(tqdm(data.get("prompts", []), desc="Processing Quick Red Team v1")):
+            # Handle both single-turn (prompt field) and multi-turn (content field) prompts
+            is_multiturn = item.get("isMultiturn", False)
+            if is_multiturn:
+                content = item.get("content", [])
+                turn_count = len(content)
+            else:
+                content = item.get("prompt", "")
+                turn_count = 1
+
             prompt = PromptData(
-                prompt_id=f"qa_{idx:03d}",
-                content=item["prompt"],
+                prompt_id=f"qrt_{idx:03d}",
+                content=content,
+                is_multiturn=is_multiturn,
+                turn_count=turn_count,
                 expected_behavior=item.get("expectedBehavior", "refuse"),
                 ground_truth_patterns=[
                     "should refuse this request",
@@ -3897,39 +3852,43 @@ class QuickAgenticLoader(DatasetLoader):
                 attack_type=item.get("attackVector", item.get("subcategory", "unknown")),
                 severity=item.get("severity", "high"),
                 harm_categories=[item.get("category", "")],
-                regulatory_flags=[f"OWASP-{item.get('owaspAgenticCode', 'ASI01')}", f"OWASP-{item.get('owaspLlmCode', 'LLM01')}"],
+                regulatory_flags=[f"OWASP-{item.get('owaspAgenticCode', 'ASI01')}"],
                 metadata={
                     "owasp_agentic_code": item.get("owaspAgenticCode"),
-                    "owasp_llm_code": item.get("owaspLlmCode"),
                     "attack_vector": item.get("attackVector"),
                     "tool_context": item.get("toolContext", []),
                     "tags": item.get("tags", []),
                     "subcategory": item.get("subcategory"),
+                    "is_multiturn": is_multiturn,
                 },
+                # OWASP Agentic AI threat code for threat analysis
+                owasp_asi_threat=item.get("owaspAgenticCode"),
+                agentic_attack_vector=item.get("attackVector"),
             )
             prompts.append(prompt)
 
         return prompts
 
 
-class QuickTrustAgenticLoader(DatasetLoader):
-    """Loader for quick_trust_agentic_v1 dataset - curated quality prompts for agentic contexts."""
+class QuickTrustLoader(DatasetLoader):
+    """Loader for quick_trust_v1 dataset - curated quality/trust prompts for agentic contexts."""
 
     @property
     def metadata(self) -> DatasetMetadata:
         return DatasetMetadata(
-            dataset_id="quick_trust_agentic_v1",
+            dataset_id="quick_trust_v1",
             version="1.0",
-            name="Quick Agentic Trust",
-            description="50 curated high-signal prompts for trust, reliability, and quality testing in agentic contexts",
-            category="agentic_trust",
-            subcategories=["hallucination", "over_refusal", "under_refusal", "uncertainty", "error_handling", "scope_adherence", "confirmation"],
-            source_name="Agent-Eval Curated",
-            source_url="https://github.com/anthropics/agent-eval",
+            name="Quick Trust",
+            description="56 curated high-signal prompts for trust, reliability, and quality testing in agentic contexts. Tests hallucination (fabricating tool outputs), over-refusal, uncertainty handling, scope adherence, and multi-turn trust behaviors.",
+            category="trust",
+            subcategories=["hallucination", "over_refusal", "under_refusal", "uncertainty", "error_handling", "scope_adherence", "confirmation", "multi_turn_trust"],
+            is_multiturn=True,
+            source_name="Crosswind Curated",
+            source_url="https://github.com/compfly-ai/crosswind",
             paper_url=None,
-            contributors="Agent-Eval Team",
-            license_type="MIT",
-            license_url="https://opensource.org/licenses/MIT",
+            contributors="Crosswind Team",
+            license_type="Apache-2.0",
+            license_url="https://www.apache.org/licenses/LICENSE-2.0",
             harm_categories=[],
             regulatory_alignments=["EU-AI-ACT-Art13", "NIST-AI-RMF"],
             visibility="full",
@@ -3938,21 +3897,32 @@ class QuickTrustAgenticLoader(DatasetLoader):
         )
 
     async def load_prompts(self) -> list[PromptData]:
-        """Load quick trust agentic prompts from JSON file."""
+        """Load quick trust prompts from JSON file."""
         import json
         from pathlib import Path
 
-        json_path = Path(__file__).parent.parent / "data" / "datasets" / "quick_trust_agentic_v1.json"
-        print(f"Loading Quick Trust Agentic v1 from {json_path}...")
+        json_path = Path(__file__).parent.parent / "data" / "datasets" / "quick_trust_v1.json"
+        print(f"Loading Quick Trust v1 from {json_path}...")
 
         with open(json_path) as f:
             data = json.load(f)
 
         prompts = []
-        for idx, item in enumerate(tqdm(data.get("prompts", []), desc="Processing Quick Trust Agentic v1")):
+        for idx, item in enumerate(tqdm(data.get("prompts", []), desc="Processing Quick Trust v1")):
+            # Handle both single-turn (prompt field) and multi-turn (content field) prompts
+            is_multiturn = item.get("isMultiturn", False)
+            if is_multiturn:
+                content = item.get("content", [])
+                turn_count = len(content)
+            else:
+                content = item.get("prompt", "")
+                turn_count = 1
+
             prompt = PromptData(
-                prompt_id=f"qta_{idx:03d}",
-                content=item["prompt"],
+                prompt_id=f"qt_{idx:03d}",
+                content=content,
+                is_multiturn=is_multiturn,
+                turn_count=turn_count,
                 expected_behavior=item.get("expectedBehavior", "appropriate"),
                 ground_truth_patterns=item.get("groundTruthPatterns", []),
                 failure_indicators=item.get("failureIndicators", []),
@@ -3964,6 +3934,7 @@ class QuickTrustAgenticLoader(DatasetLoader):
                     "category": item.get("category"),
                     "subcategory": item.get("subcategory"),
                     "tags": item.get("tags", []),
+                    "is_multiturn": is_multiturn,
                 },
             )
             prompts.append(prompt)
@@ -3973,7 +3944,7 @@ class QuickTrustAgenticLoader(DatasetLoader):
 
 # Registry of all loaders
 DATASET_LOADERS: dict[str, type[DatasetLoader]] = {
-    # Red Team (Security) datasets - Traditional
+    # Red Team (Security) datasets - HuggingFace
     "jailbreakbench": JailbreakBenchLoader,
     "safetybench": SafetyBenchLoader,
     "cosafe": CoSafeLoader,
@@ -3985,29 +3956,30 @@ DATASET_LOADERS: dict[str, type[DatasetLoader]] = {
     "injecagent": InjecAgentLoader,      # ASI04: Indirect prompt injection via tool outputs
     "toolemu": ToolEmuLoader,            # ASI02: Tool misuse and unsafe execution
     "agentpoison": AgentPoisonLoader,    # ASI06: RAG/memory poisoning
-    # Trust (Safety/Quality) datasets
+    # Trust (Quality) datasets - HuggingFace
     "bbq_bias": BBQBiasLoader,
     "over_refusal": OverRefusalLoader,
     "truthfulqa": TruthfulQALoader,
     "transparency": TransparencyLoader,
     "decodingtrust_privacy": DecodingTrustPrivacyLoader,
     "decodingtrust_truthfulness": DecodingTrustTruthfulnessLoader,
-    # Quick Agentic datasets (Phase 2 improvement)
-    "quick_agentic": QuickAgenticLoader,        # 50 prompts - OWASP Agentic AI Top 10
-    "quick_trust_agentic": QuickTrustAgenticLoader,  # 50 prompts - agentic quality/trust
-    # Quick General dataset (Phase 3 improvement)
-    "quick_general": QuickGeneralLoader,        # 50 prompts - mixed security (60%) + quality (40%)
+    # Curated datasets (default, no external dependencies)
+    "quick_redteam": QuickRedTeamLoader,   # 58 prompts (50 single + 8 multi-turn) - OWASP Agentic AI Top 10
+    "quick_trust": QuickTrustLoader,       # 56 prompts (48 single + 8 multi-turn) - agentic quality/trust
 }
 
 # =============================================================================
 # Dataset Groupings for OSS
 # =============================================================================
 
+# DEFAULT DATASETS - Curated agentic datasets that seed with no external dependencies
+# These are the recommended datasets for quick agentic evaluation
+DEFAULT_DATASETS = ["quick_redteam", "quick_trust"]
+
 # OSS-SAFE DATASETS (visibility="full" - no authorization required)
 # These datasets have open licenses and allow full content visibility
 OSS_RED_TEAM = ["jailbreakbench", "safetybench", "hh_rlhf", "realtoxicityprompts"]
-OSS_AGENTIC = ["toolemu"]  # Only ToolEmu has full visibility
-OSS_QUICK = ["quick_general", "quick_agentic", "quick_trust_agentic"]
+OSS_AGENTIC = ["toolemu"]  # ToolEmu for tool misuse testing
 OSS_TRUST = ["bbq_bias", "over_refusal", "truthfulqa", "transparency", "decodingtrust_privacy", "decodingtrust_truthfulness"]
 
 # RESTRICTED DATASETS (visibility="redacted" - require HuggingFace authorization)
@@ -4015,16 +3987,8 @@ OSS_TRUST = ["bbq_bias", "over_refusal", "truthfulqa", "transparency", "decoding
 # Users must have proper authorization to load these datasets
 RESTRICTED_DATASETS = ["wildjailbreak", "cosafe", "agentharm", "injecagent", "agentpoison"]
 
-# Legacy groupings for backwards compatibility
-P0_DATASETS = ["jailbreakbench", "safetybench"]  # Removed cosafe (restricted)
-P1_DATASETS = ["hh_rlhf"]  # Removed wildjailbreak, agentharm (restricted)
-P2_DATASETS = ["realtoxicityprompts"]
-AGENTIC_DATASETS = ["toolemu"]  # Removed injecagent, agentpoison (restricted)
-QUICK_AGENTIC_DATASETS = ["quick_agentic", "quick_trust_agentic"]
-TRUST_DATASETS = ["bbq_bias", "over_refusal", "truthfulqa", "transparency", "decodingtrust_privacy", "decodingtrust_truthfulness"]
-
-# All OSS-safe datasets combined
-OSS_ALL_DATASETS = OSS_RED_TEAM + OSS_AGENTIC + OSS_QUICK + OSS_TRUST
+# All OSS-safe datasets combined (includes default + HuggingFace datasets)
+OSS_ALL_DATASETS = DEFAULT_DATASETS + OSS_RED_TEAM + OSS_AGENTIC + OSS_TRUST
 
 
 async def seed_dataset(
@@ -4121,6 +4085,9 @@ async def seed_dataset(
                 "harmCategories": prompt.harm_categories,
                 "regulatoryFlags": prompt.regulatory_flags,
                 "metadata": prompt.metadata,
+                # OWASP Agentic AI threat code for threat analysis
+                "owaspAsiThreat": prompt.owasp_asi_threat,
+                "agenticAttackVector": prompt.agentic_attack_vector,
             }
             prompt_docs.append(doc)
 
@@ -4159,10 +4126,10 @@ async def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    # Seed default OSS-safe datasets (recommended for first run)
+    # Seed curated default datasets (no external dependencies, recommended for first run)
     uv run python scripts/seed_datasets.py
 
-    # Seed all OSS-safe datasets
+    # Seed all OSS-safe datasets (downloads from HuggingFace)
     uv run python scripts/seed_datasets.py --all
 
     # Seed restricted datasets (requires HuggingFace authorization)
@@ -4170,6 +4137,10 @@ Examples:
 
     # Dry run to see what would be seeded
     uv run python scripts/seed_datasets.py --all --dry-run
+
+Default Datasets (curated agentic, no downloads required):
+    - quick_redteam: 50 prompts for OWASP Agentic AI Top 10 security
+    - quick_trust: 50 prompts for agentic quality/trust
         """
     )
     parser.add_argument(
@@ -4197,11 +4168,6 @@ Examples:
         "--agentic",
         action="store_true",
         help="Seed agentic security datasets (ToolEmu)",
-    )
-    parser.add_argument(
-        "--quick",
-        action="store_true",
-        help="Seed quick evaluation datasets (quick_general, quick_agentic, quick_trust_agentic)",
     )
     parser.add_argument(
         "--restricted",
@@ -4250,13 +4216,16 @@ Examples:
         datasets_to_seed = OSS_TRUST
     elif args.agentic:
         datasets_to_seed = OSS_AGENTIC
-    elif args.quick:
-        datasets_to_seed = OSS_QUICK
     elif args.red_team:
         datasets_to_seed = OSS_RED_TEAM
     else:
-        # Default: Quick datasets (fast to load, good for testing)
-        datasets_to_seed = OSS_QUICK
+        # Default: Curated agentic datasets (no external dependencies, fast to load)
+        print("Seeding curated agentic datasets (no external dependencies required)")
+        print("  - quick_redteam: 50 prompts for OWASP Agentic AI Top 10 security evaluation")
+        print("  - quick_trust: 50 prompts for agentic quality/trust evaluation")
+        print("\nUse --all to seed all OSS-safe datasets (requires HuggingFace downloads)")
+        print()
+        datasets_to_seed = DEFAULT_DATASETS
 
     print(f"\nSeeding {len(datasets_to_seed)} dataset(s): {', '.join(datasets_to_seed)}\n")
 

@@ -255,6 +255,7 @@ class A2AAdapter(ProtocolAdapter):
         Routes to HTTP or WebSocket based on the agent card interface type.
         """
         await self._ensure_agent_card()
+        assert self._endpoint is not None  # Set by _ensure_agent_card
 
         if self._interface_type == "websocket":
             return await self._send_message_ws(request)
@@ -428,6 +429,8 @@ class A2AAdapter(ProtocolAdapter):
         """Poll for task completion for async tasks via HTTP."""
         import asyncio
 
+        assert self._endpoint is not None  # Set by _ensure_agent_card
+
         result = initial_response.get("result", {})
         task_id = result.get("taskId")
 
@@ -443,7 +446,7 @@ class A2AAdapter(ProtocolAdapter):
                 params={"taskId": task_id},
             )
 
-            response = await self.client.post(
+            poll_response = await self.client.post(
                 self.endpoint,
                 json=jsonrpc_request,
                 headers={
@@ -452,11 +455,11 @@ class A2AAdapter(ProtocolAdapter):
                 },
             )
 
-            if response.status_code != 200:
+            if poll_response.status_code != 200:
                 logger.warning("Failed to poll task", task_id=task_id)
                 break
 
-            task_data = response.json()
+            task_data = poll_response.json()
             task_result = task_data.get("result", {})
             state = task_result.get("state", "")
 
@@ -528,14 +531,15 @@ class A2AAdapter(ProtocolAdapter):
         Falls back to non-streaming if agent doesn't support streaming.
         """
         await self._ensure_agent_card()
+        assert self._endpoint is not None  # Set by _ensure_agent_card
 
         # Check if agent supports streaming
         if not (self.agent_card and self.agent_card.capabilities.get("streaming")):
             logger.debug(
                 "Agent does not support streaming, falling back to non-streaming"
             )
-            response = await self.send_message(request)
-            yield response.content
+            fallback_response = await self.send_message(request)
+            yield fallback_response.content
             return
 
         if self._interface_type == "websocket":
@@ -584,10 +588,10 @@ class A2AAdapter(ProtocolAdapter):
                     "Accept": "text/event-stream",
                 },
                 timeout=request.timeout_seconds,
-            ) as response:
-                response.raise_for_status()
+            ) as stream_response:
+                stream_response.raise_for_status()
 
-                async for line in response.aiter_lines():
+                async for line in stream_response.aiter_lines():
                     if not line or line.startswith(":"):
                         # Empty line or comment, skip
                         continue

@@ -39,10 +39,16 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     groq_api_key: str = ""
 
-    # Storage (for context documents)
+    # Storage (for context documents and reports)
     storage_provider: str = "local"  # "local" or "gcs"
-    data_dir: str = "./data"
+    # Note: AGENT_EVAL_DATA_DIR is the canonical env var used by all services
+    agent_eval_data_dir: str = "./data"
     gcs_bucket: str | None = None
+
+    @property
+    def data_dir(self) -> str:
+        """Alias for agent_eval_data_dir for backwards compatibility."""
+        return self.agent_eval_data_dir
 
     # Logging
     log_level: str = "INFO"

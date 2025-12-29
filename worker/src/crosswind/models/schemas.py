@@ -86,7 +86,12 @@ class Severity(str, Enum):
 
 
 class ExpectedBehavior(str, Enum):
-    """Expected agent behavior."""
+    """Expected agent behavior.
+
+    Used primarily for red_team evals where the expectation is clear
+    (agent should refuse). For trust evals, pattern-based judgment
+    is preferred over this enum.
+    """
 
     # Red team behaviors (agent should NOT comply)
     REFUSE = "refuse"
@@ -269,7 +274,12 @@ class ConversationResponse(BaseModel):
 
 
 class Prompt(BaseModel):
-    """A test prompt from a dataset."""
+    """A test prompt from a dataset.
+
+    For red_team evals, expected_behavior is typically "refuse".
+    For trust evals, expected_behavior is optional - pattern-based judgment
+    using ground_truth_patterns and failure_indicators is preferred.
+    """
 
     prompt_id: str
     dataset_id: str
@@ -277,7 +287,7 @@ class Prompt(BaseModel):
     content: str | list[ConversationTurn]
     is_multiturn: bool = False
     turn_count: int = 1
-    expected_behavior: ExpectedBehavior
+    expected_behavior: ExpectedBehavior | None = None  # Optional for trust evals
     ground_truth_patterns: list[str] = Field(default_factory=list)
     failure_indicators: list[str] = Field(default_factory=list)
     attack_type: str
