@@ -108,6 +108,13 @@ class Settings(BaseSettings):
             self.clickhouse_host = "localhost"
         return self
 
+    @model_validator(mode="after")
+    def require_encryption_key(self) -> "Settings":
+        """Ensure encryption key is present; worker needs it to decrypt agent secrets."""
+        if not self.encryption_key:
+            raise ValueError("ENCRYPTION_KEY must be set")
+        return self
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

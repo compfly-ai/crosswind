@@ -28,6 +28,9 @@ coverage/
 .coverage
 htmlcov/
 
+# Generated reports
+report*.html
+
 *.md
 !README.md
 !LICENSE

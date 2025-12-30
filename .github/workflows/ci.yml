@@ -43,6 +43,9 @@ jobs:
     defaults:
       run:
         working-directory: worker
+    env:
+      # Dummy key for tests (32 bytes hex = 64 chars)
+      ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
     steps:
       - uses: actions/checkout@v4
 
