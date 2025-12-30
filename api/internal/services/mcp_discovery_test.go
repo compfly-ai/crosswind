@@ -194,7 +194,7 @@ data: {"jsonrpc":"2.0","id":1,"result":{"serverInfo":{"name":"Test","version":"1
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", tt.contentType)
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte(tt.response))
+				_, _ = w.Write([]byte(tt.response))
 			}))
 			defer server.Close()
 
@@ -248,7 +248,7 @@ func TestSendMCPRequest_SessionID(t *testing.T) {
 		w.Header().Set("mcp-session-id", "server-session-123")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{}}`))
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{}}`))
 	}))
 	defer server.Close()
 
@@ -282,7 +282,7 @@ func TestSendMCPRequest_SessionID(t *testing.T) {
 
 	// Test 2: Session ID passed on subsequent request
 	capturedSessionID = ""
-	result, err = svc.sendMCPRequest(
+	_, err = svc.sendMCPRequest(
 		t.Context(),
 		&http.Client{},
 		server.URL,
@@ -309,7 +309,7 @@ func TestSendMCPRequest_AuthHeaders(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{}}`))
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{}}`))
 	}))
 	defer server.Close()
 
@@ -491,7 +491,7 @@ func TestMCPDiscoveryFlow(t *testing.T) {
 		}
 
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
 
@@ -537,7 +537,7 @@ func TestMCPDiscoveryFlow(t *testing.T) {
 func TestMCPDiscoveryFlow_ToolNotFound(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req jsonRPCRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("mcp-session-id", "test-session")
@@ -576,7 +576,7 @@ func TestMCPDiscoveryFlow_ToolNotFound(t *testing.T) {
 		}
 
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
 

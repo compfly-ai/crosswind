@@ -600,7 +600,7 @@ func TestMCPAgentCreationWithMinimalFields(t *testing.T) {
 	// For now, verify the request was at least parsed correctly
 	if w.Code == http.StatusBadRequest {
 		var response ErrorResponse
-		json.Unmarshal(w.Body.Bytes(), &response)
+		_ = json.Unmarshal(w.Body.Bytes(), &response)
 		// Should NOT be a validation error for missing name/description/goal
 		if response.Error.Code == "VALIDATION_ERROR" &&
 		   (contains(response.Error.Message, "name") ||
