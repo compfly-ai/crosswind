@@ -97,6 +97,12 @@ func Load() (*Config, error) {
 	if cfg.EncryptionKey == "" {
 		return nil, fmt.Errorf("ENCRYPTION_KEY environment variable is required")
 	}
+	if cfg.APIKey == "" {
+		return nil, fmt.Errorf("API_KEY environment variable is required")
+	}
+	if cfg.OpenAIKey == "" {
+		return nil, fmt.Errorf("OPENAI_API_KEY environment variable is required")
+	}
 
 	return cfg, nil
 }

@@ -60,6 +60,11 @@ func main() {
 		logger.Fatal("failed to load configuration", zap.Error(err))
 	}
 
+	// Enforce docs protection in production
+	if cfg.Environment == "production" && (cfg.DocsUsername == "" || cfg.DocsPassword == "") {
+		logger.Fatal("DOCS_USERNAME and DOCS_PASSWORD are required in production to protect /docs and /openapi.yaml")
+	}
+
 	// Debug: log docs auth config
 	if cfg.DocsPassword != "" {
 		logger.Info("docs auth enabled",
@@ -135,6 +140,7 @@ func main() {
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.Use(middleware.Logger(logger))
+	router.Use(middleware.Timeout(60*time.Second, "/v1/agents/:agentId/scenarios/:scenarioSetId/stream"))
 	router.Use(middleware.CORS())
 
 	// Health check endpoints
@@ -213,14 +219,14 @@ func main() {
 	}
 
 	// Create HTTP server
-	// Note: WriteTimeout is set to 0 (disabled) to support SSE streaming endpoints
-	// SSE connections need to stay open for extended periods during scenario generation
 	srv := &http.Server{
-		Addr:        ":" + cfg.Port,
-		Handler:     router,
-		ReadTimeout: 30 * time.Second,
-		// WriteTimeout disabled (0) for SSE support - individual handlers manage their own timeouts
-		IdleTimeout: 120 * time.Second,
+		Addr:              ":" + cfg.Port,
+		Handler:           router,
+		ReadTimeout:       30 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+		// WriteTimeout kept generous to support streaming; per-route middleware enforces defaults for regular endpoints
+		WriteTimeout: 5 * time.Minute,
+		IdleTimeout:  120 * time.Second,
 	}
 
 	// Start server in goroutine

@@ -1,5 +1,14 @@
 """Pytest configuration and fixtures."""
 
+import os
+
+# Set required environment variables BEFORE importing crosswind modules
+# This must happen before any crosswind imports to avoid validation errors
+os.environ.setdefault(
+    "ENCRYPTION_KEY",
+    "0000000000000000000000000000000000000000000000000000000000000000"
+)
+
 import asyncio
 import json
 import subprocess

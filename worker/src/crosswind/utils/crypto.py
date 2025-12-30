@@ -62,6 +62,9 @@ def decrypt_credentials(encrypted: str) -> str:
 
     Returns:
         Decrypted plaintext string
+
+    Raises:
+        ValueError: If decryption fails (e.g., missing or invalid key)
     """
     if not encrypted:
         return ""
@@ -70,29 +73,21 @@ def decrypt_credentials(encrypted: str) -> str:
     if encrypted.startswith("encrypted:"):
         encrypted = encrypted[10:]
 
-    try:
-        # Decode base64
-        ciphertext = base64.b64decode(encrypted)
+    # Decode base64
+    ciphertext = base64.b64decode(encrypted)
 
-        # Get key
-        key = _get_key()
-        aesgcm = AESGCM(key)
+    # Get key
+    key = _get_key()
+    aesgcm = AESGCM(key)
 
-        # Split nonce (12 bytes for GCM) and ciphertext
-        nonce_size = 12
-        if len(ciphertext) < nonce_size:
-            raise ValueError("Ciphertext too short")
+    # Split nonce (12 bytes for GCM) and ciphertext
+    nonce_size = 12
+    if len(ciphertext) < nonce_size:
+        raise ValueError("Ciphertext too short")
 
-        nonce = ciphertext[:nonce_size]
-        actual_ciphertext = ciphertext[nonce_size:]
+    nonce = ciphertext[:nonce_size]
+    actual_ciphertext = ciphertext[nonce_size:]
 
-        # Decrypt
-        plaintext = aesgcm.decrypt(nonce, actual_ciphertext, None)
-        return plaintext.decode("utf-8")
-
-    except Exception as e:
-        # If decryption fails, maybe it's not encrypted (dev mode)
-        import structlog
-        logger = structlog.get_logger()
-        logger.warning("Failed to decrypt credentials, returning as-is", error=str(e))
-        return encrypted
+    # Decrypt
+    plaintext = aesgcm.decrypt(nonce, actual_ciphertext, None)
+    return plaintext.decode("utf-8")
