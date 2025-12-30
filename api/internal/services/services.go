@@ -34,6 +34,7 @@ var (
 	ErrMissingReasoningEngineID = errors.New("reasoningEngineId is required for Vertex protocol")
 	ErrMissingAgentCardURL      = errors.New("agentCardUrl is required for A2A protocol")
 	ErrMissingMCPTransport      = errors.New("mcpTransport is required for MCP protocol")
+	ErrMissingMCPToolName       = errors.New("mcpToolName is required for MCP protocol")
 )
 
 // Services holds all service instances

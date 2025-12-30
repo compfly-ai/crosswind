@@ -87,6 +87,17 @@ func (s *AgentService) Create(ctx context.Context, req *models.CreateAgentReques
 		}
 	}
 
+	// For MCP protocol, fetch tool info and auto-populate fields
+	if req.EndpointConfig.Protocol == models.ProtocolMCP && req.EndpointConfig.MCPToolName != "" {
+		if err := s.populateFromMCPTool(ctx, req); err != nil {
+			s.logger.Warn("failed to fetch MCP tool info, using provided values",
+				zap.String("endpoint", req.EndpointConfig.Endpoint),
+				zap.String("tool", req.EndpointConfig.MCPToolName),
+				zap.Error(err))
+			// Continue with user-provided values if fetch fails
+		}
+	}
+
 	// Encrypt sensitive fields
 	encryptedCreds := ""
 	if req.AuthConfig.Credentials != "" && s.encryptor != nil {
@@ -131,6 +142,7 @@ func (s *AgentService) Create(ctx context.Context, req *models.CreateAgentReques
 		RateLimits:           req.RateLimits,
 		SessionStrategy:      sessionStrategy,
 		DeclaredCapabilities: req.DeclaredCapabilities,
+		MCPToolSchema:        req.MCPToolSchema,
 		Status:               models.AgentStatusActive,
 	}
 
@@ -285,6 +297,68 @@ func (s *AgentService) populateFromA2AAgentCard(ctx context.Context, req *models
 					req.AuthConfig.Type = models.AuthTypeBasic
 				}
 			}
+		}
+	}
+
+	return nil
+}
+
+// populateFromMCPTool fetches the MCP tool schema and populates request fields.
+// User-provided values take precedence over discovered values.
+func (s *AgentService) populateFromMCPTool(ctx context.Context, req *models.CreateAgentRequest) error {
+	// Default transport to streamable_http if not specified
+	transport := req.EndpointConfig.MCPTransport
+	if transport == "" {
+		transport = "streamable_http"
+	}
+
+	// Discover MCP tool
+	result, err := s.DiscoverMCPTool(ctx, req.EndpointConfig.Endpoint, req.EndpointConfig.MCPToolName, transport, nil)
+	if err != nil {
+		return err
+	}
+
+	s.logger.Info("fetched MCP tool info",
+		zap.String("endpoint", req.EndpointConfig.Endpoint),
+		zap.String("tool", result.Tool.Name),
+		zap.String("server", result.Server.Name))
+
+	// Auto-populate fields from tool info (only if not already provided)
+	if req.Name == "" {
+		req.Name = result.Tool.Name
+	}
+	if req.Description == "" {
+		req.Description = result.Tool.Description
+		if req.Description == "" {
+			req.Description = "MCP tool: " + result.Tool.Name
+		}
+	}
+	if req.Goal == "" {
+		req.Goal = result.Tool.Description
+		if req.Goal == "" {
+			req.Goal = "Evaluate MCP tool safety and security"
+		}
+	}
+	if req.Industry == "" {
+		req.Industry = "Technology"
+	}
+
+	// Store tool schema for eval-time prompt mapping
+	req.MCPToolSchema = &models.MCPToolSchema{
+		ToolName:        result.Tool.Name,
+		ToolDescription: result.Tool.Description,
+		InputSchema:     result.Tool.InputSchema,
+		MessageField:    FindMessageField(result.Tool.InputSchema),
+		ServerName:      result.Server.Name,
+		ServerVersion:   result.Server.Version,
+		DiscoveredAt:    time.Now(),
+	}
+
+	// Set declaredCapabilities with just this tool
+	if req.DeclaredCapabilities == nil {
+		req.DeclaredCapabilities = &models.AgentCapabilities{
+			Tools:    []string{result.Tool.Name},
+			HasTools: true,
 		}
 	}
 
@@ -591,12 +665,15 @@ func validateProtocolRequiredFields(config models.EndpointConfig) error {
 		return nil
 
 	case models.ProtocolMCP:
-		// MCP requires endpoint and mcpTransport
+		// MCP requires endpoint, mcpTransport, and mcpToolName
 		if config.Endpoint == "" {
 			return ErrMissingEndpoint
 		}
 		if config.MCPTransport == "" {
 			return ErrMissingMCPTransport
+		}
+		if config.MCPToolName == "" {
+			return ErrMissingMCPToolName
 		}
 		return nil
 

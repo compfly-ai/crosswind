@@ -168,7 +168,7 @@ paths:
         | `vertex` | projectId, reasoningEngineId | google_oauth |
         | `custom` | endpoint | any |
         | `a2a` | agentCardUrl | any |
-        | `mcp` | endpoint, mcpTransport | any |
+        | `mcp` | endpoint, mcpTransport, mcpToolName | any |
 
         ## Platform Protocols
 
@@ -189,7 +189,7 @@ paths:
         ## Future Protocols (V2)
 
         - **A2A**: Google Agent-to-Agent protocol - requires `agentCardUrl`
-        - **MCP**: Model Context Protocol - requires `endpoint` and `mcpTransport`
+        - **MCP**: Model Context Protocol - requires `endpoint`, `mcpTransport`, and `mcpToolName`
       operationId: createAgent
       requestBody:
         required: true
@@ -344,18 +344,18 @@ paths:
                     type: bearer
                     credentials: xxx
               mcp:
-                summary: MCP server (V2)
-                description: Register an MCP (Model Context Protocol) server.
+                summary: MCP tool (V2)
+                description: |
+                  Register an MCP tool as an agent. Only agentId is required -
+                  name, description, goal are auto-populated from tool discovery.
                 value:
                   agentId: my-mcp-agent
-                  name: MCP Agent
-                  description: Agent using MCP protocol
-                  goal: Tool integration
                   industry: technology
                   endpointConfig:
                     protocol: mcp
                     endpoint: https://my-mcp-server.example.com/mcp
-                    mcpTransport: sse
+                    mcpTransport: streamable_http
+                    mcpToolName: chat
                   authConfig:
                     type: bearer
                     credentials: xxx
@@ -1490,7 +1490,7 @@ components:
         - vertex: projectId, reasoningEngineId
         - custom: endpoint (full URL to conversation endpoint)
         - a2a: agentCardUrl
-        - mcp: endpoint, mcpTransport
+        - mcp: endpoint, mcpTransport, mcpToolName
       properties:
         protocol:
           type: string
@@ -1576,7 +1576,11 @@ components:
           type: string
           enum: [sse, streamable_http]
           description: MCP transport type
-          example: sse
+          example: streamable_http
+        mcpToolName:
+          type: string
+          description: Name of the MCP tool to use as the agent
+          example: chat
 
     AuthConfig:
       type: object
