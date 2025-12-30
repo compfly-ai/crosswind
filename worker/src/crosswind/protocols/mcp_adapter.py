@@ -81,11 +81,6 @@ class MCPAdapter(ProtocolAdapter):
         from mcp.client.sse import sse_client
         from mcp.client.streamable_http import streamable_http_client
 
-        self._http_client = httpx.AsyncClient(
-            timeout=self.timeout,
-            headers=self._auth_headers(),
-        )
-
         logger.debug(
             "Initializing MCP session",
             endpoint=self.endpoint,
@@ -94,11 +89,18 @@ class MCPAdapter(ProtocolAdapter):
         )
 
         if self.transport == "sse":
+            # sse_client takes headers directly
             self._client_ctx = sse_client(
                 url=self.endpoint,
-                http_client=self._http_client,
+                headers=self._auth_headers() or None,
+                timeout=self.timeout,
             )
         else:
+            # streamable_http_client takes http_client
+            self._http_client = httpx.AsyncClient(
+                timeout=self.timeout,
+                headers=self._auth_headers(),
+            )
             self._client_ctx = streamable_http_client(
                 url=self.endpoint,
                 http_client=self._http_client,
