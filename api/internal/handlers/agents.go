@@ -44,14 +44,15 @@ func (h *AgentHandlers) Create(c *gin.Context) {
 	_ = json.Unmarshal(body, &protocolCheck)
 
 	var req models.CreateAgentRequest
-	if protocolCheck.EndpointConfig.Protocol == models.ProtocolA2A {
-		// For A2A, use lenient parsing (no required field validation)
-		// Service will auto-populate from agent card
+	if protocolCheck.EndpointConfig.Protocol == models.ProtocolA2A ||
+		protocolCheck.EndpointConfig.Protocol == models.ProtocolMCP {
+		// For A2A/MCP, use lenient parsing (no required field validation)
+		// Service will auto-populate from agent card / MCP tool discovery
 		if err := json.Unmarshal(body, &req); err != nil {
 			respondWithError(c, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body", err.Error())
 			return
 		}
-		// Validate only agentId is required for A2A
+		// Validate only agentId is required for A2A/MCP
 		if req.AgentID == "" {
 			respondWithError(c, http.StatusBadRequest, "INVALID_REQUEST", "agentId is required", nil)
 			return
@@ -92,6 +93,8 @@ func (h *AgentHandlers) Create(c *gin.Context) {
 			respondWithError(c, http.StatusBadRequest, "MISSING_AGENT_CARD_URL", "agentCardUrl is required for A2A protocol", nil)
 		case services.ErrMissingMCPTransport:
 			respondWithError(c, http.StatusBadRequest, "MISSING_MCP_TRANSPORT", "mcpTransport is required for MCP protocol", nil)
+		case services.ErrMissingMCPToolName:
+			respondWithError(c, http.StatusBadRequest, "MISSING_MCP_TOOL_NAME", "mcpToolName is required for MCP protocol", nil)
 		default:
 			h.logger.Error("failed to create agent", zap.Error(err))
 			respondWithError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to create agent", nil)

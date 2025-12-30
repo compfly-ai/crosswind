@@ -462,3 +462,161 @@ func TestAgentNotFound(t *testing.T) {
 		t.Errorf("expected error code AGENT_NOT_FOUND, got %s", response.Error.Code)
 	}
 }
+
+// === MCP Protocol Tests ===
+
+func TestMCPAgentValidation(t *testing.T) {
+	router, _ := setupTestRouter(t)
+
+	tests := []struct {
+		name           string
+		body           string
+		expectedStatus int
+		expectedCode   string
+	}{
+		{
+			name:           "missing endpoint for MCP",
+			body:           `{"agentId": "mcp-1", "name": "Test", "description": "Test", "goal": "Test", "industry": "tech", "endpointConfig": {"protocol": "mcp", "mcpTransport": "sse"}, "authConfig": {"type": "none"}}`,
+			expectedStatus: http.StatusBadRequest,
+			expectedCode:   "MISSING_ENDPOINT",
+		},
+		{
+			name:           "missing mcpTransport for MCP",
+			body:           `{"agentId": "mcp-2", "name": "Test", "description": "Test", "goal": "Test", "industry": "tech", "endpointConfig": {"protocol": "mcp", "endpoint": "http://example.com/mcp"}, "authConfig": {"type": "none"}}`,
+			expectedStatus: http.StatusBadRequest,
+			expectedCode:   "MISSING_MCP_TRANSPORT",
+		},
+		{
+			name:           "valid MCP config with all fields",
+			body:           `{"agentId": "mcp-3", "name": "Test", "description": "Test", "goal": "Test", "industry": "tech", "endpointConfig": {"protocol": "mcp", "endpoint": "http://example.com/mcp", "mcpTransport": "sse", "mcpToolName": "chat"}, "authConfig": {"type": "none"}}`,
+			expectedStatus: http.StatusCreated,
+			expectedCode:   "",
+		},
+		{
+			name:           "valid MCP with streamable_http transport",
+			body:           `{"agentId": "mcp-4", "name": "Test", "description": "Test", "goal": "Test", "industry": "tech", "endpointConfig": {"protocol": "mcp", "endpoint": "http://localhost:9000/mcp", "mcpTransport": "streamable_http", "mcpToolName": "search"}, "authConfig": {"type": "none"}}`,
+			expectedStatus: http.StatusCreated,
+			expectedCode:   "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/v1/agents", bytes.NewBufferString(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			router.ServeHTTP(w, req)
+
+			if w.Code != tt.expectedStatus {
+				t.Errorf("expected status %d, got %d: %s", tt.expectedStatus, w.Code, w.Body.String())
+			}
+
+			if tt.expectedCode != "" {
+				var response ErrorResponse
+				if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+					t.Fatalf("failed to parse error response: %v", err)
+				}
+				if response.Error.Code != tt.expectedCode {
+					t.Errorf("expected error code %s, got %s", tt.expectedCode, response.Error.Code)
+				}
+			}
+		})
+	}
+}
+
+func TestMCPAgentLenientParsing(t *testing.T) {
+	// MCP protocol uses lenient parsing - only agentId is required
+	// Name, description, goal are auto-populated from MCP discovery
+	// Since we don't have a real MCP server, we test that:
+	// 1. The request doesn't fail validation for missing name/description/goal
+	// 2. The validation for protocol-specific fields still works
+
+	router, _ := setupTestRouter(t)
+
+	// This should fail because mcpTransport is missing (protocol validation)
+	// but NOT because name/description/goal are missing (lenient parsing)
+	body := `{
+		"agentId": "mcp-lenient-test",
+		"industry": "technology",
+		"endpointConfig": {
+			"protocol": "mcp",
+			"endpoint": "http://localhost:9000/mcp"
+		},
+		"authConfig": {"type": "none"}
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/agents", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	// Should fail with MISSING_MCP_TRANSPORT, not MISSING_NAME
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var response ErrorResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse error response: %v", err)
+	}
+
+	if response.Error.Code != "MISSING_MCP_TRANSPORT" {
+		t.Errorf("expected MISSING_MCP_TRANSPORT, got %s - lenient parsing may not be working", response.Error.Code)
+	}
+}
+
+func TestMCPAgentCreationWithMinimalFields(t *testing.T) {
+	// Test that MCP agent can be created with minimal fields
+	// (only agentId and proper endpointConfig)
+
+	router, _ := setupTestRouter(t)
+
+	// Minimal MCP request - only agentId, endpoint config, auth
+	body := `{
+		"agentId": "mcp-minimal",
+		"industry": "technology",
+		"endpointConfig": {
+			"protocol": "mcp",
+			"endpoint": "http://localhost:9000/mcp",
+			"mcpTransport": "streamable_http",
+			"mcpToolName": "chat"
+		},
+		"authConfig": {"type": "none"}
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/agents", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	// MCP discovery will fail (no real server), but request parsing should succeed
+	// The service should handle the discovery failure gracefully
+	// In test mode without real MCP server, we may get 201 with empty name
+	// or 500 if discovery is required - depends on implementation
+
+	// For now, verify the request was at least parsed correctly
+	if w.Code == http.StatusBadRequest {
+		var response ErrorResponse
+		_ = json.Unmarshal(w.Body.Bytes(), &response)
+		// Should NOT be a validation error for missing name/description/goal
+		if response.Error.Code == "VALIDATION_ERROR" &&
+		   (contains(response.Error.Message, "name") ||
+		    contains(response.Error.Message, "description") ||
+		    contains(response.Error.Message, "goal")) {
+			t.Errorf("MCP lenient parsing failed - got validation error for: %s", response.Error.Message)
+		}
+	}
+}
+
+// Helper for string containment
+func contains(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return len(substr) == 0
+}

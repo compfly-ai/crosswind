@@ -229,6 +229,7 @@ func TestValidateProtocolRequiredFields(t *testing.T) {
 				Protocol:     models.ProtocolMCP,
 				Endpoint:     "https://my-mcp-server.example.com",
 				MCPTransport: "sse",
+				MCPToolName:  "chat",
 			},
 			wantErr: nil,
 		},

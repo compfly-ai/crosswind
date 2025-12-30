@@ -5,6 +5,7 @@ from typing import Any
 from crosswind.models import AuthConfig
 from crosswind.protocols.a2a_adapter import A2AAdapter
 from crosswind.protocols.base import ProtocolAdapter
+from crosswind.protocols.mcp_adapter import MCPAdapter
 from crosswind.protocols.openapi_http import HTTPAgentError, OpenAPIHttpAdapter
 from crosswind.utils.crypto import decrypt_credentials
 
@@ -115,7 +116,27 @@ def create_adapter(agent_doc: dict[str, Any]) -> ProtocolAdapter:
         )
 
     elif protocol == "mcp":
-        raise NotImplementedError("MCP protocol support coming in V2")
+        endpoint = endpoint_config.get("endpoint")
+        if not endpoint:
+            raise ValueError("MCP protocol requires endpoint in endpointConfig")
+
+        tool_name = endpoint_config.get("mcpToolName")
+        if not tool_name:
+            raise ValueError("MCP protocol requires mcpToolName in endpointConfig")
+
+        transport = endpoint_config.get("mcpTransport", "streamable_http")
+
+        # Get message field from mcpToolSchema (populated during agent creation)
+        mcp_tool_schema = agent_doc.get("mcpToolSchema", {})
+        message_field = mcp_tool_schema.get("messageField", "message")
+
+        return MCPAdapter(
+            endpoint=endpoint,
+            tool_name=tool_name,
+            message_field=message_field,
+            transport=transport,
+            auth_config=auth,
+        )
 
     else:
         raise ValueError(f"Unsupported protocol: {protocol}")
@@ -126,5 +147,6 @@ __all__ = [
     "ProtocolAdapter",
     "OpenAPIHttpAdapter",
     "A2AAdapter",
+    "MCPAdapter",
     "create_adapter",
 ]
