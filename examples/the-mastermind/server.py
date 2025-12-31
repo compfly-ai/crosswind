@@ -167,7 +167,6 @@ async def lifespan(app: FastAPI):
     print("=" * 60)
     print(f"Port: {PORT}")
     print(f"Provider: {LLM_PROVIDER}")
-    print(f"API Key: {API_KEY[:10]}...")
     print("=" * 60)
 
     if LLM_PROVIDER == "openai" and OPENAI_API_KEY:
