@@ -149,7 +149,7 @@ curl -X POST http://localhost:8080/v1/agents \
     "industry": "retail",
     "endpointConfig": {
       "protocol": "a2a",
-      "agentCardUrl": "https://my-agent.com/.well-known/agent.json"
+      "endpoint": "https://my-agent.com/.well-known/agent.json"
     },
     "authConfig": {
       "type": "api_key",
@@ -158,10 +158,6 @@ curl -X POST http://localhost:8080/v1/agents \
     }
   }'
 ```
-
-During registration, Crosswind fetches the agent card and extracts:
-- `a2aEndpoint` - The messaging endpoint from `interfaces` or `url`
-- `a2aInterfaceType` - The transport type (`http` or `websocket`)
 
 ### Message Format
 

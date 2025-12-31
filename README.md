@@ -1,22 +1,23 @@
 # Crosswind
 
-Security evaluation for AI agents—not just LLMs, but the full agentic system with tools, memory, and multi-turn conversations.
+Security evaluation for AI agents. Test your agentic systems against prompt injection, tool misuse, jailbreaks, and multi-turn attacks before deployment.
 
-Crosswind tests your agent against adversarial scenarios: prompt injections that target tool calls, jailbreaks that exploit conversation context, and attacks that chain across multiple turns. You get a report showing exactly where your agent's defenses break down.
+## What It Does
 
-## What You Can Test
+Crosswind tests your AI agent by sending adversarial prompts and analyzing responses. It reports where your defenses fail and how to fix them.
 
 **Red Team (Security)**
-- Prompt injection - Does your agent execute injected instructions from untrusted data?
-- Tool misuse - Can attackers trick your agent into harmful tool calls?
-- Jailbreaks - Can users bypass your system prompt through conversation?
-- Data exfiltration - Will your agent leak sensitive context or tool outputs?
+- Prompt injection via tool outputs
+- Tool misuse and unauthorized actions
+- Jailbreak attempts
+- Data exfiltration
+- Multi-turn trust exploitation
 
-**Trust (Compliance)**
-- Hallucination - Does your agent fabricate facts or tool results?
-- Bias - Are agent decisions fair across demographics?
-- Over-refusal - Does your agent block legitimate actions?
-- Policy adherence - Does your agent follow your operational guidelines?
+**Trust (Quality)**
+- Hallucination detection
+- Bias testing
+- Over-refusal analysis
+- Policy adherence
 
 Both evaluation types map to regulatory frameworks (EU AI Act, NIST AI RMF) for compliance reporting.
 
@@ -28,8 +29,8 @@ git clone https://github.com/compfly-ai/crosswind.git
 cd crosswind/deploy
 cp .env.example .env
 
-# Generate encryption key
-openssl rand -hex 32  # Add to .env as ENCRYPTION_KEY
+# Generate encryption key and add to .env
+openssl rand -hex 32
 
 # Add your OpenAI key for LLM judgment
 # OPENAI_API_KEY=sk-...
@@ -37,7 +38,7 @@ openssl rand -hex 32  # Add to .env as ENCRYPTION_KEY
 # Start services
 docker compose up -d
 
-# Seed the default evaluation datasets (required for meaningful reports)
+# Seed evaluation datasets
 cd ../scripts && uv sync
 uv run python seed_datasets.py
 
@@ -45,7 +46,7 @@ uv run python seed_datasets.py
 curl http://localhost:8080/health
 ```
 
-## Run Your First Eval
+## Run an Evaluation
 
 ```bash
 export API_KEY="your-api-key"  # From .env
@@ -55,63 +56,49 @@ curl -X POST http://localhost:8080/v1/agents \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "Support Bot",
-    "description": "Customer support agent",
-    "goal": "Help customers with product questions",
-    "industry": "ecommerce",
+    "name": "My Agent",
+    "description": "Customer support bot",
+    "goal": "Help customers",
+    "industry": "retail",
     "endpointConfig": {
       "protocol": "custom",
-      "endpoint": "https://your-agent.com/chat"
+      "endpoint": "https://my-agent.com/chat"
     },
     "authConfig": {
       "type": "bearer",
-      "credentials": "your-agent-api-key"
+      "credentials": "agent-token"
     }
   }'
-# Returns: {"id": "agent_abc123", ...}
 
-# 2. Run a quick security eval (~60 prompts, covers OWASP Agentic AI Top 10)
-curl -X POST http://localhost:8080/v1/agents/agent_abc123/evals \
+# 2. Run security evaluation
+curl -X POST http://localhost:8080/v1/agents/{agentId}/evals \
   -H "Authorization: Bearer $API_KEY" \
-  -H "Content-Type: application/json" \
   -d '{"mode": "quick", "evalType": "red_team"}'
-# Returns: {"runId": "run_xyz789", ...}
 
-# 3. Check status
-curl http://localhost:8080/v1/evals/run_xyz789 \
+# 3. Get results
+curl http://localhost:8080/v1/evals/{runId}/results \
   -H "Authorization: Bearer $API_KEY"
-
-# 4. Get results (JSON)
-curl http://localhost:8080/v1/evals/run_xyz789/results \
-  -H "Authorization: Bearer $API_KEY"
-
-# 5. Download HTML report
-curl http://localhost:8080/v1/evals/run_xyz789/report \
-  -H "Authorization: Bearer $API_KEY" \
-  -o report.html
 ```
 
 ## Evaluation Modes
 
 | Mode | Prompts | Time | Use Case |
 |------|---------|------|----------|
-| `quick` | ~60 | 1-2 min | CI/CD gates, quick checks (full OWASP coverage) |
+| `quick` | ~60 | 1-2 min | CI/CD, smoke tests |
 | `standard` | ~2,000 | 15-30 min | Regular testing |
 | `deep` | ~10,000 | 1-2 hrs | Pre-release audits |
 
-## Supported Agent Frameworks
+## Supported Protocols
 
-Works with any agent that exposes an HTTP or WebSocket endpoint:
-
-| Protocol | Agent Framework |
-|----------|-----------------|
-| `openai` | OpenAI Assistants API |
-| `azure_openai` | Azure OpenAI Agents |
-| `langgraph` | LangGraph Cloud agents |
+| Protocol | Agent Type |
+|----------|------------|
+| `custom` | Any HTTP API |
+| `openai` | OpenAI Assistants/Prompts |
+| `langgraph` | LangGraph Platform |
 | `bedrock` | AWS Bedrock Agents |
-| `vertex` | Vertex AI Agents (Reasoning Engines) |
-| `custom` | Any agentic HTTP endpoint |
-| `custom_ws` | Any agentic WebSocket endpoint |
+| `vertex` | Google Vertex AI |
+| `a2a` | Google Agent-to-Agent |
+| `mcp` | Model Context Protocol |
 
 ## Architecture
 
@@ -124,83 +111,32 @@ Works with any agent that exposes an HTTP or WebSocket endpoint:
          ▼                                               ▼
 ┌─────────────────┐                            ┌─────────────────┐
 │    MongoDB      │                            │   Your Agent    │
-│                 │                            │   (HTTP/WS)     │
 └─────────────────┘                            └─────────────────┘
 ```
 
-**Components:**
-- `api/` - Go REST API, job orchestration
-- `worker/` - Python eval runner with multi-turn session support
-- `context-processor/` - Document extraction for agent-specific scenarios
+## Documentation
 
-## Built-in Datasets
+| Guide | Description |
+|-------|-------------|
+| [Getting Started](./docs/getting-started.md) | Installation and first evaluation |
+| [API Reference](./docs/api-reference.md) | Complete REST API documentation |
+| [Protocols](./docs/protocols.md) | Connect HTTP, A2A, MCP agents |
+| [Configuration](./docs/configuration.md) | Environment variables and options |
 
-Crosswind includes curated evaluation datasets. The default datasets require no external dependencies and provide full OWASP Agentic AI Top 10 coverage.
+## Example Agents
 
-```bash
-cd scripts && uv sync
+The `/examples` folder contains demo agents for testing:
 
-# Seed default curated datasets (recommended - no HuggingFace token needed)
-uv run python seed_datasets.py
-
-# Seed all datasets including HuggingFace sources (requires token)
-export HUGGINGFACE_TOKEN=hf_...
-uv run python seed_datasets.py --all
-```
-
-**Default Datasets** (curated, no external dependencies)
-
-| Dataset | Type | Prompts | Description |
-|---------|------|---------|-------------|
-| `quick_redteam` | Red Team | 58 | OWASP Agentic AI Top 10 (ASI01-ASI10) - tool misuse, prompt injection, memory poisoning, multi-turn escalation |
-| `quick_trust` | Trust | 56 | Agentic quality - hallucination, over-refusal, bias, multi-turn trust behaviors |
-
-**HuggingFace Datasets** (requires token, use `--all`)
-
-| Dataset | Type | Description |
-|---------|------|-------------|
-| JailbreakBench | Red Team | Jailbreak prompts with human annotations |
-| SafetyBench | Red Team | Multi-lingual safety evaluation |
-| HH-RLHF | Red Team | Human preference data with red team examples |
-| RealToxicityPrompts | Red Team | Toxicity elicitation prompts |
-| ToolEmu | Red Team | Agent tool misuse scenarios |
-| BBQ Bias | Trust | Bias detection across demographics |
-| TruthfulQA | Trust | Truthfulness and hallucination detection |
-| DecodingTrust | Trust | Privacy and truthfulness probes |
-| AgentHarm 🔒 | Red Team | Agentic harm scenarios (requires approval) |
-| WildJailbreak 🔒 | Red Team | In-the-wild jailbreaks (requires approval) |
-
-## Agent-Specific Scenarios
-
-Generic datasets are a start, but your agent has specific tools, memory, and context that attackers will target. Crosswind can generate scenarios tailored to your agent.
-
-When you register an agent with its capabilities (tools like Salesforce or Slack, memory settings, RAG context), the scenario generator creates attacks that exploit those specific surfaces—multi-turn conversations that build trust before attempting tool misuse, memory poisoning across sessions, or data exfiltration through your actual integrations.
+| Agent | Protocol | Port | Description |
+|-------|----------|------|-------------|
+| The Mastermind | HTTP | 8901 | Heist-themed chat agent |
+| The Gadget | MCP | 8902 | Tool server with calculations |
+| The Inside Man | A2A | 8903 | Noir-style A2A agent |
 
 ```bash
-# Upload your agent's context (product docs, policies, etc.)
-curl -X POST http://localhost:8080/v1/contexts \
-  -H "Authorization: Bearer $API_KEY" \
-  -F "files=@product-catalog.pdf" \
-  -F "files=@return-policy.docx"
-
-# Generate scenarios targeting your agent's capabilities
-curl -X POST http://localhost:8080/v1/agents/{agentId}/scenarios/generate \
-  -H "Authorization: Bearer $API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"contextId": "ctx_123", "count": 50}'
+cd examples/the-mastermind
+uv sync && uv run python server.py
 ```
-
-The generated scenarios include single-turn probes and multi-turn conversations that mirror real attack patterns.
-
-## Configuration
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `ENCRYPTION_KEY` | AES-256 key (required) | - |
-| `API_KEY` | Bearer token for API auth | - |
-| `OPENAI_API_KEY` | For LLM judgment | - |
-| `GROQ_API_KEY` | Alternative to OpenAI | - |
-| `ANALYTICS_BACKEND` | `duckdb`, `clickhouse`, `none` | `duckdb` |
 
 ## Local Development
 
@@ -211,37 +147,11 @@ cd api && go run ./cmd/server
 # Worker (Python 3.11+)
 cd worker && uv sync && uv run python -m crosswind.main
 
-# Run tests
+# Tests
 cd api && go test ./...
 cd worker && uv run pytest
 ```
 
-## Acknowledgements
-
-Crosswind is built on these excellent open-source projects:
-
-**Infrastructure**
-- [MongoDB](https://www.mongodb.com/) - Document database
-- [Redis](https://redis.io/) - Job queue and caching
-- [DuckDB](https://duckdb.org/) - Embedded analytics database
-- [ClickHouse](https://clickhouse.com/) - Columnar analytics (optional)
-
-**API (Go)**
-- [Gin](https://gin-gonic.com/) - HTTP framework
-- [mongo-driver](https://github.com/mongodb/mongo-go-driver) - MongoDB client
-- [go-redis](https://github.com/redis/go-redis) - Redis client
-- [Zap](https://github.com/uber-go/zap) - Structured logging
-
-**Worker (Python)**
-- [OpenAI SDK](https://github.com/openai/openai-python) - LLM-as-judge
-- [Pydantic](https://docs.pydantic.dev/) - Data validation
-- [httpx](https://www.python-httpx.org/) - HTTP client
-- [structlog](https://www.structlog.org/) - Structured logging
-- [Motor](https://motor.readthedocs.io/) - Async MongoDB driver
-
-**Document Processing**
-- [Docling](https://github.com/DS4SD/docling) - PDF/document extraction
-
 ## License
 
-Apache 2.0 - See [LICENSE](LICENSE)
+Apache 2.0
