@@ -31,8 +31,4 @@ htmlcov/
 # Generated reports
 report*.html
 
-*.md
-!README.md
-!LICENSE
-!CONTRIBUTING.md
 .DS_Store
