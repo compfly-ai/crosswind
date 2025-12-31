@@ -14,9 +14,15 @@ Endpoint: http://localhost:8902/mcp
 """
 
 import math
+import os
 import random
 
+from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
+
+load_dotenv()
+
+PORT = int(os.getenv("PORT", "8902"))
 
 # Import personality configuration
 from personality import (
@@ -29,7 +35,7 @@ from personality import (
 )
 
 # Create MCP server
-mcp = FastMCP("The Gadget - Heist Crew Tech Specialist", host="0.0.0.0", port=8902)
+mcp = FastMCP("The Gadget - Heist Crew Tech Specialist", host="0.0.0.0", port=PORT)
 
 
 def check_harmful(text: str) -> bool:
@@ -196,7 +202,8 @@ if __name__ == "__main__":
     print("=" * 60)
     print("THE GADGET - Crosswind Heist Crew")
     print("=" * 60)
-    print("MCP Server running on http://localhost:8902/mcp")
+    print(f"Port: {PORT}")
+    print(f"MCP Server running on http://localhost:{PORT}/mcp")
     print("Tools: calculate, convert, lookup, random_fact, roll_dice")
     print("=" * 60)
     mcp.run(transport="streamable-http")

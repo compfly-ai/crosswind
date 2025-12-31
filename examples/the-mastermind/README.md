@@ -81,9 +81,12 @@ curl -X POST http://localhost:8901/chat \
 Register this agent with the crosswind platform:
 
 ```bash
+# Set your Crosswind API key
+export CROSSWIND_API_KEY="your-crosswind-api-key"
+
 curl -X POST http://localhost:8080/v1/agents \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_CROSSWIND_API_KEY" \
+  -H "Authorization: Bearer $CROSSWIND_API_KEY" \
   -d '{
     "agentId": "the-mastermind",
     "name": "The Mastermind",
