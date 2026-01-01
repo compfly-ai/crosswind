@@ -17,8 +17,8 @@ worker/**/__pycache__/
 *.swp
 
 # Data
-data/
 *.db
+worker/data
 
 # Logs
 *.log
