@@ -284,9 +284,9 @@ class TestWebSocketSmoke:
         """Verify real WebSocket send/receive works."""
         from crosswind.models import ConversationRequest, Message
 
-        # The fixture starts a server on port 8907
+        # The fixture starts HTTP on 8907 (for agent card) and WebSocket on 8908
         adapter = A2AAdapter(
-            endpoint="ws://localhost:8907/ws",
+            endpoint="ws://localhost:8908/",
             interface_type="websocket",
         )
 
