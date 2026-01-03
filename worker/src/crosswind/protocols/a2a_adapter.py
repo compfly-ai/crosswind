@@ -221,6 +221,9 @@ class A2AAdapter(ProtocolAdapter):
         if self.agent_card is not None:
             return
 
+        if not self.agent_card_url:
+            raise RuntimeError("No agent_card_url configured for discovery mode")
+
         logger.debug("Fetching agent card", url=self.agent_card_url)
 
         response = await self.client.get(
