@@ -66,21 +66,28 @@ class AgentCard:
     def get_interface(self) -> tuple[str, str]:
         """Extract preferred interface (type, url) from agent card.
 
-        Priority: websocket > http > json-rpc > first available > direct url
+        Priority: http > json-rpc > websocket > first available > direct url
+
+        For evaluation, HTTP is preferred because:
+        - Simpler request-response pattern (no connection management)
+        - Stateless and retryable on failure
+        - Sufficient for prompt → response evaluation
+
+        WebSocket is only used when HTTP is not available.
 
         Returns:
             Tuple of (interface_type, url). interface_type is one of:
-            "websocket", "http", or the raw type from the agent card.
+            "http", "websocket", or the raw type from the agent card.
         """
-        # Check for WebSocket first (preferred for bidirectional communication)
-        for interface in self.interfaces:
-            if interface.get("type") == "websocket":
-                return ("websocket", interface.get("url", ""))
-
-        # Fall back to HTTP/JSON-RPC
+        # Prefer HTTP/JSON-RPC (simpler, sufficient for eval)
         for interface in self.interfaces:
             if interface.get("type") in ("http", "json-rpc"):
                 return ("http", interface.get("url", ""))
+
+        # Fall back to WebSocket if HTTP not available
+        for interface in self.interfaces:
+            if interface.get("type") == "websocket":
+                return ("websocket", interface.get("url", ""))
 
         # Use first interface if available
         if self.interfaces:
@@ -101,36 +108,61 @@ class AgentCard:
 class A2AAdapter(ProtocolAdapter):
     """Adapter for A2A (Agent-to-Agent) protocol.
 
-    Flow:
-    1. Fetch agent card from agent_card_url
-    2. Extract endpoint URL and interface type from agent card
-    3. Send JSON-RPC 2.0 messages via HTTP or WebSocket
+    Two modes of initialization:
 
-    Supports both HTTP and WebSocket interfaces as declared in the agent card.
+    1. Discovery mode (Registration): Provide agent_card_url
+       - Fetches agent card on first use
+       - Extracts endpoint and interface type
+
+    2. Direct mode (Evaluation): Provide endpoint and interface_type
+       - Uses stored endpoint directly
+       - No discovery needed
+
+    Supports both HTTP and WebSocket interfaces.
     """
 
     def __init__(
         self,
-        agent_card_url: str,
+        agent_card_url: str | None = None,
         auth_config: AuthConfig | None = None,
         timeout: float = 120.0,
+        *,
+        endpoint: str | None = None,
+        interface_type: str | None = None,
     ) -> None:
         """Initialize the A2A adapter.
 
         Args:
-            agent_card_url: URL to the agent card
+            agent_card_url: URL to the agent card for discovery mode
                 (e.g., https://agent.example.com/.well-known/agent.json)
             auth_config: Authentication configuration
             timeout: Request timeout in seconds
+            endpoint: Direct endpoint URL (skips discovery)
+            interface_type: Interface type ("http" or "websocket") when using direct endpoint
         """
+        if not agent_card_url and not endpoint:
+            raise ValueError("Either agent_card_url or endpoint must be provided")
+
         self.agent_card_url = agent_card_url
         self.auth_config = auth_config or AuthConfig()
         self.timeout = timeout
         self.client = httpx.AsyncClient(timeout=timeout)
         self.agent_card: AgentCard | None = None
-        self._endpoint: str | None = None
-        self._interface_type: str = "http"  # "http" or "websocket"
         self._ws_connections: dict[str, WebSocketConnection] = {}
+
+        # Direct mode: endpoint provided, skip discovery
+        if endpoint:
+            self._endpoint = endpoint
+            self._interface_type = interface_type or "http"
+            logger.info(
+                "A2A adapter initialized with direct endpoint",
+                endpoint=endpoint,
+                interface_type=self._interface_type,
+            )
+        else:
+            # Discovery mode: will fetch agent card on first use
+            self._endpoint = None
+            self._interface_type = "http"
 
     @property
     def endpoint(self) -> str:
@@ -153,6 +185,8 @@ class A2AAdapter(ProtocolAdapter):
             ws = await websockets.connect(
                 self.endpoint,
                 additional_headers=self._auth_headers(),
+                ping_interval=None,  # Disable automatic ping (we manage keepalive via messages)
+                ping_timeout=None,   # No timeout on pings
             )
             self._ws_connections[session_id] = ws
         return self._ws_connections[session_id]
@@ -172,7 +206,16 @@ class A2AAdapter(ProtocolAdapter):
                 )
 
     async def _ensure_agent_card(self) -> None:
-        """Fetch and cache agent card if not already loaded."""
+        """Fetch and cache agent card if not already loaded.
+
+        In direct mode (endpoint provided at init), this is a no-op since
+        we already have the endpoint.
+        """
+        # Direct mode: endpoint already set, skip discovery
+        if self._endpoint is not None:
+            return
+
+        # Discovery mode: fetch agent card
         if self.agent_card is not None:
             return
 

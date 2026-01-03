@@ -106,9 +106,24 @@ def create_adapter(agent_doc: dict[str, Any]) -> ProtocolAdapter:
         )
 
     elif protocol == "a2a":
+        # Prefer stored endpoint (from registration discovery) over re-fetching agent card
+        a2a_endpoint = endpoint_config.get("a2aEndpoint")
+        a2a_interface_type = endpoint_config.get("a2aInterfaceType", "http")
+
+        if a2a_endpoint:
+            # Direct mode: use stored endpoint (no discovery needed)
+            return A2AAdapter(
+                endpoint=a2a_endpoint,
+                interface_type=a2a_interface_type,
+                auth_config=auth,
+            )
+
+        # Fallback: discovery mode (for backwards compatibility or registration)
         agent_card_url = endpoint_config.get("agentCardUrl")
         if not agent_card_url:
-            raise ValueError("A2A protocol requires agentCardUrl in endpointConfig")
+            raise ValueError(
+                "A2A protocol requires either a2aEndpoint or agentCardUrl in endpointConfig"
+            )
 
         return A2AAdapter(
             agent_card_url=agent_card_url,
