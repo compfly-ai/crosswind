@@ -148,6 +148,8 @@ class A2AAdapter(ProtocolAdapter):
         self.timeout = timeout
         self.client = httpx.AsyncClient(timeout=timeout)
         self.agent_card: AgentCard | None = None
+        self._endpoint: str | None = None
+        self._interface_type: str = "http"
         self._ws_connections: dict[str, WebSocketConnection] = {}
 
         # Direct mode: endpoint provided, skip discovery
@@ -757,12 +759,28 @@ class A2AAdapter(ProtocolAdapter):
         logger.debug("A2A session closed", session_id=session_id)
 
     async def health_check(self) -> bool:
-        """Check if the agent is reachable by fetching agent card."""
+        """Check if the agent is reachable.
+
+        In discovery mode: fetches agent card.
+        In direct mode: checks the endpoint directly.
+        """
         try:
-            response = await self.client.get(
-                self.agent_card_url,
-                timeout=10.0,
-            )
-            return response.status_code == 200
+            if self.agent_card_url:
+                # Discovery mode: check agent card URL
+                response = await self.client.get(
+                    self.agent_card_url,
+                    timeout=10.0,
+                )
+                return response.status_code == 200
+            elif self._endpoint and self._interface_type == "http":
+                # Direct mode with HTTP: check endpoint
+                response = await self.client.get(
+                    self._endpoint,
+                    timeout=10.0,
+                )
+                return response.status_code in (200, 400, 405)  # Accept common responses
+            else:
+                # Direct mode with WebSocket: assume healthy (can't easily check)
+                return True
         except Exception:
             return False
