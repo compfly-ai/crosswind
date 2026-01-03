@@ -1,11 +1,12 @@
-"""A2A adapter Registration tests.
+"""A2A adapter tests.
 
-Tests the Registration side: Can we create and configure this protocol adapter?
-- Interface selection logic (WS vs HTTP)
+Tests the A2A protocol adapter functionality:
 - Authentication header building
-- AgentCard discovery and parsing
 - Health check / endpoint reachability
-- Endpoint validation
+- HTTP and WebSocket message sending
+
+Discovery mode has been removed - the Go API handles agent card discovery
+during registration and provides the endpoint directly to the worker.
 
 For Evaluation tests (protocol usage during eval), see test_eval_runner_a2a.py.
 """
@@ -15,99 +16,39 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 from crosswind.models import AuthConfig
-from crosswind.protocols.a2a_adapter import A2AAdapter, AgentCard
+from crosswind.protocols.a2a_adapter import A2AAdapter
 
 
 # =============================================================================
-# Interface Selection (Decision Logic)
+# Constructor Validation
 # =============================================================================
 
 
-class TestInterfaceSelection:
-    """Test adapter selects correct interface based on agent card.
+class TestConstructorValidation:
+    """Test adapter constructor validation."""
 
-    A2A agents can expose multiple interfaces. The adapter prioritizes
-    HTTP over WebSocket because:
-    - HTTP is simpler (stateless, request-response)
-    - Sufficient for evaluation (prompt → response)
-    - WebSocket only needed for streaming/real-time (not eval)
-    """
+    def test_requires_endpoint(self):
+        """Should raise ValueError when endpoint is empty."""
+        with pytest.raises(ValueError, match="endpoint is required"):
+            A2AAdapter(endpoint="")
 
-    def test_http_priority_over_websocket(self):
-        """Given both HTTP and WS, adapter should select HTTP.
+    def test_accepts_valid_endpoint(self):
+        """Should accept valid endpoint URL."""
+        adapter = A2AAdapter(endpoint="http://example.com/a2a")
+        assert adapter.endpoint == "http://example.com/a2a"
 
-        HTTP is preferred for eval because it's simpler and sufficient.
-        """
-        card = AgentCard.from_dict({
-            "name": "Test",
-            "description": "Test",
-            "interfaces": [
-                {"type": "websocket", "url": "ws://example.com/ws"},
-                {"type": "http", "url": "http://example.com/http"},
-            ],
-        })
+    def test_default_interface_type_is_http(self):
+        """Default interface type should be HTTP."""
+        adapter = A2AAdapter(endpoint="http://example.com/a2a")
+        assert adapter.interface_type == "http"
 
-        iface_type, url = card.get_interface()
-
-        assert iface_type == "http"
-        assert url == "http://example.com/http"
-
-    def test_websocket_fallback_when_no_http(self):
-        """Given only WebSocket, adapter should use WebSocket."""
-        card = AgentCard.from_dict({
-            "name": "Test",
-            "description": "Test",
-            "interfaces": [{"type": "websocket", "url": "ws://example.com/ws"}],
-        })
-
-        iface_type, url = card.get_interface()
-
-        assert iface_type == "websocket"
-        assert url == "ws://example.com/ws"
-
-    def test_json_rpc_normalized_to_http(self):
-        """json-rpc interface type should be treated as HTTP.
-
-        Some A2A servers advertise 'json-rpc' as interface type.
-        This should be normalized to HTTP for transport.
-        """
-        card = AgentCard.from_dict({
-            "name": "Test",
-            "description": "Test",
-            "interfaces": [{"type": "json-rpc", "url": "http://example.com/rpc"}],
-        })
-
-        iface_type, url = card.get_interface()
-
-        assert iface_type == "http"
-
-    def test_url_field_fallback(self):
-        """When no interfaces array, should use url field.
-
-        Legacy A2A cards may use a top-level 'url' field instead of interfaces.
-        """
-        card = AgentCard.from_dict({
-            "name": "Test",
-            "description": "Test",
-            "interfaces": [],
-            "url": "http://example.com/a2a",
-        })
-
-        iface_type, url = card.get_interface()
-
-        assert url == "http://example.com/a2a"
-
-    def test_no_endpoint_returns_empty(self):
-        """When no interfaces and no url, should return empty string."""
-        card = AgentCard.from_dict({
-            "name": "Test",
-            "description": "Test",
-            "interfaces": [],
-        })
-
-        _, url = card.get_interface()
-
-        assert url == ""
+    def test_accepts_websocket_interface_type(self):
+        """Should accept websocket interface type."""
+        adapter = A2AAdapter(
+            endpoint="ws://example.com/a2a",
+            interface_type="websocket",
+        )
+        assert adapter.interface_type == "websocket"
 
 
 # =============================================================================
@@ -125,7 +66,7 @@ class TestAuthentication:
     def test_bearer_auth(self):
         """Bearer auth should produce 'Authorization: Bearer <token>'."""
         adapter = A2AAdapter(
-            agent_card_url="http://example.com/.well-known/agent.json",
+            endpoint="http://example.com/a2a",
             auth_config=AuthConfig(type="bearer", credentials="my-token"),
         )
 
@@ -139,7 +80,7 @@ class TestAuthentication:
         Some APIs use X-API-Key, others use custom headers.
         """
         adapter = A2AAdapter(
-            agent_card_url="http://example.com/.well-known/agent.json",
+            endpoint="http://example.com/a2a",
             auth_config=AuthConfig(
                 type="api_key",
                 credentials="secret",
@@ -156,7 +97,7 @@ class TestAuthentication:
         import base64
 
         adapter = A2AAdapter(
-            agent_card_url="http://example.com/.well-known/agent.json",
+            endpoint="http://example.com/a2a",
             auth_config=AuthConfig(type="basic", credentials="user:pass"),
         )
 
@@ -168,7 +109,7 @@ class TestAuthentication:
     def test_no_auth(self):
         """No auth should produce empty headers."""
         adapter = A2AAdapter(
-            agent_card_url="http://example.com/.well-known/agent.json",
+            endpoint="http://example.com/a2a",
             auth_config=AuthConfig(type="none"),
         )
 
@@ -179,7 +120,7 @@ class TestAuthentication:
     def test_unknown_auth_type_empty_headers(self):
         """Unknown auth type should produce empty headers (fail open)."""
         adapter = A2AAdapter(
-            agent_card_url="http://example.com/.well-known/agent.json",
+            endpoint="http://example.com/a2a",
             auth_config=AuthConfig(type="oauth2", credentials="token"),
         )
 
@@ -189,124 +130,17 @@ class TestAuthentication:
 
 
 # =============================================================================
-# AgentCard Discovery
-# =============================================================================
-
-
-class TestAgentCardDiscovery:
-    """Test fetching and parsing agent cards from /.well-known/agent.json.
-
-    A2A agents expose their capabilities via agent cards. The adapter
-    must fetch, parse, and validate these cards during registration.
-    """
-
-    @pytest.mark.asyncio
-    async def test_fetches_agent_card_on_first_access(self):
-        """Should fetch agent card when _ensure_agent_card is called."""
-        adapter = A2AAdapter(agent_card_url="http://localhost:9000/.well-known/agent.json")
-
-        mock_card = {
-            "name": "Test Agent",
-            "description": "A test agent",
-            "interfaces": [{"type": "http", "url": "http://localhost:9000/a2a"}],
-        }
-
-        with patch.object(adapter.client, "get") as mock_get:
-            mock_get.return_value = MagicMock(
-                status_code=200,
-                json=lambda: mock_card,
-                raise_for_status=lambda: None,
-            )
-
-            await adapter._ensure_agent_card()
-
-            mock_get.assert_called_once()
-            assert adapter.agent_card is not None
-            assert adapter.agent_card.name == "Test Agent"
-
-        await adapter.cleanup()
-
-    @pytest.mark.asyncio
-    async def test_connection_error_during_discovery(self):
-        """Should raise when agent card fetch fails."""
-        adapter = A2AAdapter(
-            agent_card_url="http://nonexistent.local/.well-known/agent.json",
-            timeout=1.0,
-        )
-
-        with patch.object(adapter.client, "get") as mock_get:
-            mock_get.side_effect = httpx.ConnectError("Connection refused")
-
-            with pytest.raises(httpx.ConnectError):
-                await adapter._ensure_agent_card()
-
-        await adapter.cleanup()
-
-    @pytest.mark.asyncio
-    async def test_missing_endpoint_raises_validation_error(self):
-        """Should raise ValueError when agent card has no endpoint.
-
-        An agent card without interfaces or url is invalid for communication.
-        """
-        adapter = A2AAdapter(agent_card_url="http://localhost:9000/.well-known/agent.json")
-
-        bad_card = {"name": "Bad", "description": "No endpoint", "interfaces": []}
-
-        with patch.object(adapter.client, "get") as mock_get:
-            mock_get.return_value = MagicMock(
-                status_code=200,
-                json=lambda: bad_card,
-                raise_for_status=lambda: None,
-            )
-
-            with pytest.raises(ValueError, match="missing"):
-                await adapter._ensure_agent_card()
-
-        await adapter.cleanup()
-
-    @pytest.mark.asyncio
-    async def test_detects_interface_type_from_card(self):
-        """Should set _interface_type based on agent card."""
-        adapter = A2AAdapter(agent_card_url="http://localhost:9000/.well-known/agent.json")
-
-        mock_card = {
-            "name": "WS Agent",
-            "description": "Test",
-            "interfaces": [
-                {"type": "websocket", "url": "ws://localhost:9000/ws"},
-            ],
-        }
-
-        with patch.object(adapter.client, "get") as mock_get:
-            mock_get.return_value = MagicMock(
-                status_code=200,
-                json=lambda: mock_card,
-                raise_for_status=lambda: None,
-            )
-
-            await adapter._ensure_agent_card()
-
-            assert adapter._interface_type == "websocket"
-            assert "ws://" in adapter._endpoint
-
-        await adapter.cleanup()
-
-
-# =============================================================================
 # Health Check
 # =============================================================================
 
 
 class TestHealthCheck:
-    """Test health check behavior for registration validation.
-
-    Before registering an agent, we verify the endpoint is reachable.
-    """
+    """Test health check behavior for endpoint validation."""
 
     @pytest.mark.asyncio
-    async def test_healthy_endpoint(self):
-        """Should return True when agent card is reachable."""
-        adapter = A2AAdapter(agent_card_url="http://localhost:9000/.well-known/agent.json")
+    async def test_healthy_http_endpoint(self):
+        """Should return True when HTTP endpoint is reachable."""
+        adapter = A2AAdapter(endpoint="http://localhost:9000/a2a")
 
         with patch.object(adapter.client, "get") as mock_get:
             mock_get.return_value = MagicMock(status_code=200)
@@ -320,7 +154,7 @@ class TestHealthCheck:
     @pytest.mark.asyncio
     async def test_unreachable_endpoint(self):
         """Should return False when connection fails."""
-        adapter = A2AAdapter(agent_card_url="http://localhost:9000/.well-known/agent.json")
+        adapter = A2AAdapter(endpoint="http://localhost:9000/a2a")
 
         with patch.object(adapter.client, "get") as mock_get:
             mock_get.side_effect = httpx.ConnectError("Connection refused")
@@ -334,7 +168,7 @@ class TestHealthCheck:
     @pytest.mark.asyncio
     async def test_timeout_returns_unhealthy(self):
         """Should return False on timeout."""
-        adapter = A2AAdapter(agent_card_url="http://localhost:9000/.well-known/agent.json")
+        adapter = A2AAdapter(endpoint="http://localhost:9000/a2a")
 
         with patch.object(adapter.client, "get") as mock_get:
             mock_get.side_effect = httpx.TimeoutException("Timeout")
@@ -346,62 +180,86 @@ class TestHealthCheck:
         await adapter.cleanup()
 
     @pytest.mark.asyncio
-    async def test_404_returns_unhealthy(self):
-        """Should return False when agent card returns 404."""
-        adapter = A2AAdapter(agent_card_url="http://localhost:9000/.well-known/agent.json")
+    async def test_websocket_interface_assumes_healthy(self):
+        """WebSocket interface should assume healthy (can't easily check)."""
+        adapter = A2AAdapter(
+            endpoint="ws://localhost:9000/a2a",
+            interface_type="websocket",
+        )
 
-        with patch.object(adapter.client, "get") as mock_get:
-            mock_get.return_value = MagicMock(status_code=404)
+        result = await adapter.health_check()
 
-            result = await adapter.health_check()
-
-            assert result is False
+        # WebSocket health check returns True without actual connection
+        assert result is True
 
         await adapter.cleanup()
 
 
 # =============================================================================
-# Endpoint Property Validation
+# HTTP Message Sending
 # =============================================================================
 
 
-class TestEndpointValidation:
-    """Test endpoint property access validation."""
+class TestHTTPMessageSending:
+    """Test HTTP message sending functionality."""
 
     @pytest.mark.asyncio
-    async def test_endpoint_access_before_card_loaded(self):
-        """Should raise when accessing endpoint before agent card loaded.
+    async def test_sends_jsonrpc_request(self):
+        """Should send JSON-RPC 2.0 formatted request."""
+        from crosswind.models import ConversationRequest, Message
 
-        This prevents using the adapter before discovery is complete.
-        """
-        adapter = A2AAdapter(agent_card_url="http://localhost:9000/.well-known/agent.json")
+        adapter = A2AAdapter(endpoint="http://localhost:9000/a2a")
 
-        with pytest.raises(RuntimeError, match="not loaded"):
-            _ = adapter.endpoint
-
-        await adapter.cleanup()
-
-    @pytest.mark.asyncio
-    async def test_endpoint_accessible_after_discovery(self):
-        """Should return endpoint after agent card is loaded."""
-        adapter = A2AAdapter(agent_card_url="http://localhost:9000/.well-known/agent.json")
-
-        mock_card = {
-            "name": "Test",
-            "description": "Test",
-            "interfaces": [{"type": "http", "url": "http://localhost:9000/a2a"}],
-        }
-
-        with patch.object(adapter.client, "get") as mock_get:
-            mock_get.return_value = MagicMock(
+        with patch.object(adapter.client, "post") as mock_post:
+            mock_post.return_value = MagicMock(
                 status_code=200,
-                json=lambda: mock_card,
-                raise_for_status=lambda: None,
+                json=lambda: {
+                    "jsonrpc": "2.0",
+                    "id": "test",
+                    "result": {
+                        "kind": "message",
+                        "parts": [{"kind": "text", "text": "Hello back!"}],
+                    },
+                },
             )
 
-            await adapter._ensure_agent_card()
+            response = await adapter.send_message(
+                ConversationRequest(
+                    messages=[Message(role="user", content="Hello")],
+                    session_id="test-session",
+                )
+            )
 
-            assert adapter.endpoint == "http://localhost:9000/a2a"
+            # Verify JSON-RPC structure was sent
+            call_args = mock_post.call_args
+            sent_json = call_args.kwargs["json"]
+            assert sent_json["jsonrpc"] == "2.0"
+            assert sent_json["method"] == "message/send"
+            assert "params" in sent_json
+
+            # Verify response was extracted
+            assert response.content == "Hello back!"
+            assert response.session_id == "test-session"
+
+        await adapter.cleanup()
+
+    @pytest.mark.asyncio
+    async def test_http_error_raises_exception(self):
+        """Should raise exception on HTTP error status."""
+        from crosswind.models import ConversationRequest, Message
+
+        adapter = A2AAdapter(endpoint="http://localhost:9000/a2a")
+
+        with patch.object(adapter.client, "post") as mock_post:
+            mock_post.return_value = MagicMock(status_code=500)
+
+            with pytest.raises(Exception, match="status 500"):
+                await adapter.send_message(
+                    ConversationRequest(
+                        messages=[Message(role="user", content="Hello")],
+                        session_id="test-session",
+                    )
+                )
 
         await adapter.cleanup()
 
@@ -426,7 +284,11 @@ class TestWebSocketSmoke:
         """Verify real WebSocket send/receive works."""
         from crosswind.models import ConversationRequest, Message
 
-        adapter = A2AAdapter(agent_card_url="http://localhost:8907/.well-known/agent.json")
+        # The fixture starts a server on port 8907
+        adapter = A2AAdapter(
+            endpoint="ws://localhost:8907/ws",
+            interface_type="websocket",
+        )
 
         try:
             response = await adapter.send_message(

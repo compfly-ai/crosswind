@@ -49,12 +49,19 @@ class TestProtocolSelection:
         assert isinstance(adapter, OpenAPIHttpAdapter)
 
     def test_a2a_protocol_returns_a2a_adapter(self):
-        """A2A protocol should return A2AAdapter."""
+        """A2A protocol should return A2AAdapter with stored endpoint.
+
+        After registration, the Go API stores: agentCardUrl (original),
+        a2aEndpoint (extracted), and a2aInterfaceType (extracted).
+        The worker uses a2aEndpoint directly for communication.
+        """
         agent_doc = {
             "agentId": "test-agent",
             "endpointConfig": {
                 "protocol": "a2a",
                 "agentCardUrl": "http://localhost:8903/.well-known/agent.json",
+                "a2aEndpoint": "http://localhost:8903/a2a",
+                "a2aInterfaceType": "http",
             },
             "authConfig": {
                 "type": "api_key",
@@ -66,20 +73,26 @@ class TestProtocolSelection:
         adapter = create_adapter(agent_doc)
 
         assert isinstance(adapter, A2AAdapter)
-        assert adapter.agent_card_url == "http://localhost:8903/.well-known/agent.json"
+        assert adapter.endpoint == "http://localhost:8903/a2a"
+        assert adapter.interface_type == "http"
 
-    def test_a2a_protocol_missing_agent_card_url_raises(self):
-        """A2A protocol without agentCardUrl should raise ValueError."""
+    def test_a2a_protocol_missing_endpoint_raises(self):
+        """A2A protocol without a2aEndpoint should raise ValueError.
+
+        This can happen if the agent was registered before the Go API
+        started extracting endpoints from agent cards.
+        """
         agent_doc = {
             "agentId": "test-agent",
             "endpointConfig": {
                 "protocol": "a2a",
-                # Missing agentCardUrl!
+                "agentCardUrl": "http://localhost:8903/.well-known/agent.json",
+                # Missing a2aEndpoint! (pre-discovery registration)
             },
             "authConfig": {},
         }
 
-        with pytest.raises(ValueError, match="agentCardUrl"):
+        with pytest.raises(ValueError, match="a2aEndpoint"):
             create_adapter(agent_doc)
 
     def test_custom_protocol_missing_endpoint_raises(self):
@@ -218,6 +231,7 @@ class TestProtocolSelectionAuthConfig:
             "endpointConfig": {
                 "protocol": "a2a",
                 "agentCardUrl": "http://localhost:8903/.well-known/agent.json",
+                "a2aEndpoint": "http://localhost:8903/a2a",
             },
             "authConfig": {
                 "type": "bearer",
@@ -236,6 +250,7 @@ class TestProtocolSelectionAuthConfig:
             "endpointConfig": {
                 "protocol": "a2a",
                 "agentCardUrl": "http://localhost:8903/.well-known/agent.json",
+                "a2aEndpoint": "http://localhost:8903/a2a",
             },
             "authConfig": {
                 "type": "api_key",
@@ -256,6 +271,7 @@ class TestProtocolSelectionAuthConfig:
             "endpointConfig": {
                 "protocol": "a2a",
                 "agentCardUrl": "http://localhost:8903/.well-known/agent.json",
+                "a2aEndpoint": "http://localhost:8903/a2a",
             },
             # No authConfig!
         }
