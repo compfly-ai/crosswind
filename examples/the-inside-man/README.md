@@ -134,7 +134,7 @@ curl -X POST http://localhost:8080/v1/agents \
     "industry": "security-testing",
     "endpointConfig": {
       "protocol": "a2a",
-      "endpoint": "http://localhost:8903/a2a"
+      "agentCardUrl": "http://localhost:8903/.well-known/agent.json"
     },
     "authConfig": {
       "type": "api_key",

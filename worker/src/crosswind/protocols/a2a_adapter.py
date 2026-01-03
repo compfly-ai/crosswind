@@ -7,7 +7,6 @@ See: https://github.com/google/A2A
 import json
 import time
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
 from typing import Any
 from uuid import uuid4
 
@@ -24,120 +23,45 @@ WebSocketConnection = Any
 logger = structlog.get_logger()
 
 
-@dataclass
-class AgentCard:
-    """A2A Agent Card metadata."""
-
-    id: str
-    name: str
-    description: str
-    version: str
-    protocol_version: str
-    provider: dict[str, Any]
-    capabilities: dict[str, Any]
-    skills: list[dict[str, Any]]
-    interfaces: list[dict[str, Any]]
-    url: str | None = None  # Direct URL field (newer A2A spec)
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "AgentCard":
-        """Create AgentCard from dictionary."""
-        return cls(
-            id=data.get("id", ""),
-            name=data.get("name", ""),
-            description=data.get("description", ""),
-            version=data.get("version", ""),
-            protocol_version=data.get("protocolVersion", ""),
-            provider=data.get("provider", {}),
-            capabilities=data.get("capabilities", {}),
-            skills=data.get("skills", []),
-            interfaces=data.get("interfaces", []),
-            url=data.get("url"),
-        )
-
-    def get_url(self) -> str:
-        """Extract service URL from agent card (legacy method).
-
-        Checks both the direct 'url' field and 'interfaces' array.
-        """
-        _, url = self.get_interface()
-        return url
-
-    def get_interface(self) -> tuple[str, str]:
-        """Extract preferred interface (type, url) from agent card.
-
-        Priority: websocket > http > json-rpc > first available > direct url
-
-        Returns:
-            Tuple of (interface_type, url). interface_type is one of:
-            "websocket", "http", or the raw type from the agent card.
-        """
-        # Check for WebSocket first (preferred for bidirectional communication)
-        for interface in self.interfaces:
-            if interface.get("type") == "websocket":
-                return ("websocket", interface.get("url", ""))
-
-        # Fall back to HTTP/JSON-RPC
-        for interface in self.interfaces:
-            if interface.get("type") in ("http", "json-rpc"):
-                return ("http", interface.get("url", ""))
-
-        # Use first interface if available
-        if self.interfaces:
-            iface = self.interfaces[0]
-            iface_type = iface.get("type", "http")
-            # Normalize json-rpc to http
-            if iface_type == "json-rpc":
-                iface_type = "http"
-            return (iface_type, iface.get("url", ""))
-
-        # Direct URL field (newer A2A spec) - assume HTTP
-        if self.url:
-            return ("http", self.url)
-
-        return ("http", "")
-
-
 class A2AAdapter(ProtocolAdapter):
     """Adapter for A2A (Agent-to-Agent) protocol.
 
-    Flow:
-    1. Fetch agent card from agent_card_url
-    2. Extract endpoint URL and interface type from agent card
-    3. Send JSON-RPC 2.0 messages via HTTP or WebSocket
+    Expects endpoint and interface_type to be provided directly.
+    Discovery is handled by the Go API during registration.
 
-    Supports both HTTP and WebSocket interfaces as declared in the agent card.
+    Supports both HTTP and WebSocket interfaces.
     """
 
     def __init__(
         self,
-        agent_card_url: str,
+        endpoint: str,
+        interface_type: str = "http",
         auth_config: AuthConfig | None = None,
         timeout: float = 120.0,
     ) -> None:
         """Initialize the A2A adapter.
 
         Args:
-            agent_card_url: URL to the agent card
-                (e.g., https://agent.example.com/.well-known/agent.json)
+            endpoint: A2A endpoint URL (extracted from agent card during registration)
+            interface_type: Interface type - "http" or "websocket"
             auth_config: Authentication configuration
             timeout: Request timeout in seconds
         """
-        self.agent_card_url = agent_card_url
+        if not endpoint:
+            raise ValueError("endpoint is required")
+
+        self.endpoint = endpoint
+        self.interface_type = interface_type
         self.auth_config = auth_config or AuthConfig()
         self.timeout = timeout
         self.client = httpx.AsyncClient(timeout=timeout)
-        self.agent_card: AgentCard | None = None
-        self._endpoint: str | None = None
-        self._interface_type: str = "http"  # "http" or "websocket"
         self._ws_connections: dict[str, WebSocketConnection] = {}
 
-    @property
-    def endpoint(self) -> str:
-        """Get the endpoint URL, raising if not yet loaded."""
-        if self._endpoint is None:
-            raise RuntimeError("Agent card not loaded. Call _ensure_agent_card() first.")
-        return self._endpoint
+        logger.info(
+            "A2A adapter initialized",
+            endpoint=endpoint,
+            interface_type=interface_type,
+        )
 
     async def _get_ws_connection(self, session_id: str) -> WebSocketConnection:
         """Get or create WebSocket connection for a session.
@@ -153,6 +77,8 @@ class A2AAdapter(ProtocolAdapter):
             ws = await websockets.connect(
                 self.endpoint,
                 additional_headers=self._auth_headers(),
+                ping_interval=None,  # Disable automatic ping (we manage keepalive via messages)
+                ping_timeout=None,   # No timeout on pings
             )
             self._ws_connections[session_id] = ws
         return self._ws_connections[session_id]
@@ -170,37 +96,6 @@ class A2AAdapter(ProtocolAdapter):
                     session_id=session_id,
                     error=str(e),
                 )
-
-    async def _ensure_agent_card(self) -> None:
-        """Fetch and cache agent card if not already loaded."""
-        if self.agent_card is not None:
-            return
-
-        logger.debug("Fetching agent card", url=self.agent_card_url)
-
-        response = await self.client.get(
-            self.agent_card_url,
-            headers=self._auth_headers(),
-        )
-        response.raise_for_status()
-
-        data = response.json()
-        self.agent_card = AgentCard.from_dict(data)
-
-        # Extract interface type and endpoint from agent card
-        self._interface_type, base_url = self.agent_card.get_interface()
-        if not base_url:
-            raise ValueError("Agent card missing 'url' or 'interfaces' with url")
-
-        self._endpoint = base_url.rstrip("/")
-
-        logger.info(
-            "Agent card loaded",
-            name=self.agent_card.name,
-            version=self.agent_card.version,
-            interface_type=self._interface_type,
-            endpoint=self.endpoint,
-        )
 
     async def cleanup(self) -> None:
         """Clean up all connections (HTTP client and WebSocket connections)."""
@@ -252,12 +147,9 @@ class A2AAdapter(ProtocolAdapter):
     async def send_message(self, request: ConversationRequest) -> ConversationResponse:
         """Send a message via A2A protocol.
 
-        Routes to HTTP or WebSocket based on the agent card interface type.
+        Routes to HTTP or WebSocket based on the interface type.
         """
-        await self._ensure_agent_card()
-        assert self._endpoint is not None  # Set by _ensure_agent_card
-
-        if self._interface_type == "websocket":
+        if self.interface_type == "websocket":
             return await self._send_message_ws(request)
         else:
             return await self._send_message_http(request)
@@ -429,8 +321,6 @@ class A2AAdapter(ProtocolAdapter):
         """Poll for task completion for async tasks via HTTP."""
         import asyncio
 
-        assert self._endpoint is not None  # Set by _ensure_agent_card
-
         result = initial_response.get("result", {})
         task_id = result.get("taskId")
 
@@ -446,7 +336,7 @@ class A2AAdapter(ProtocolAdapter):
                 params={"taskId": task_id},
             )
 
-            poll_response = await self.client.post(
+            response = await self.client.post(
                 self.endpoint,
                 json=jsonrpc_request,
                 headers={
@@ -455,11 +345,11 @@ class A2AAdapter(ProtocolAdapter):
                 },
             )
 
-            if poll_response.status_code != 200:
+            if response.status_code != 200:
                 logger.warning("Failed to poll task", task_id=task_id)
                 break
 
-            task_data = poll_response.json()
+            task_data = response.json()
             task_result = task_data.get("result", {})
             state = task_result.get("state", "")
 
@@ -527,22 +417,9 @@ class A2AAdapter(ProtocolAdapter):
     ) -> AsyncIterator[str]:
         """Send a message and stream response tokens.
 
-        Routes to HTTP (SSE) or WebSocket based on the agent card interface type.
-        Falls back to non-streaming if agent doesn't support streaming.
+        Routes to HTTP (SSE) or WebSocket based on interface type.
         """
-        await self._ensure_agent_card()
-        assert self._endpoint is not None  # Set by _ensure_agent_card
-
-        # Check if agent supports streaming
-        if not (self.agent_card and self.agent_card.capabilities.get("streaming")):
-            logger.debug(
-                "Agent does not support streaming, falling back to non-streaming"
-            )
-            fallback_response = await self.send_message(request)
-            yield fallback_response.content
-            return
-
-        if self._interface_type == "websocket":
+        if self.interface_type == "websocket":
             async for chunk in self._send_message_streaming_ws(request):
                 yield chunk
         else:
@@ -588,10 +465,10 @@ class A2AAdapter(ProtocolAdapter):
                     "Accept": "text/event-stream",
                 },
                 timeout=request.timeout_seconds,
-            ) as stream_response:
-                stream_response.raise_for_status()
+            ) as response:
+                response.raise_for_status()
 
-                async for line in stream_response.aiter_lines():
+                async for line in response.aiter_lines():
                     if not line or line.startswith(":"):
                         # Empty line or comment, skip
                         continue
@@ -718,12 +595,16 @@ class A2AAdapter(ProtocolAdapter):
         logger.debug("A2A session closed", session_id=session_id)
 
     async def health_check(self) -> bool:
-        """Check if the agent is reachable by fetching agent card."""
+        """Check if the agent is reachable."""
         try:
-            response = await self.client.get(
-                self.agent_card_url,
-                timeout=10.0,
-            )
-            return response.status_code == 200
+            if self.interface_type == "http":
+                response = await self.client.get(
+                    self.endpoint,
+                    timeout=10.0,
+                )
+                return response.status_code in (200, 400, 405)  # Accept common responses
+            else:
+                # WebSocket: assume healthy (can't easily check without connecting)
+                return True
         except Exception:
             return False

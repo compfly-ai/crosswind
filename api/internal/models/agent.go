@@ -75,6 +75,10 @@ type EndpointConfig struct {
 
 	// Full URL to the Agent Card (e.g., "https://my-agent.example.com/.well-known/agent.json")
 	AgentCardURL string `bson:"agentCardUrl,omitempty" json:"agentCardUrl,omitempty"`
+	// Discovered endpoint URL from AgentCard interfaces (e.g., "https://my-agent.example.com/a2a")
+	A2AEndpoint string `bson:"a2aEndpoint,omitempty" json:"a2aEndpoint,omitempty"`
+	// Discovered interface type: "http" or "websocket"
+	A2AInterfaceType string `bson:"a2aInterfaceType,omitempty" json:"a2aInterfaceType,omitempty"`
 
 	// === MCP protocol fields ===
 

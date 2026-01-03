@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/compfly-ai/crosswind/api/internal/config"
@@ -300,6 +301,19 @@ func (s *AgentService) populateFromA2AAgentCard(ctx context.Context, req *models
 		}
 	}
 
+	// Extract endpoint and interface type from interfaces
+	// Priority: HTTP > JSON-RPC > WebSocket (HTTP is simpler and sufficient for eval)
+	if len(agentCard.Interfaces) > 0 {
+		interfaceType, endpoint := selectA2AInterface(agentCard.Interfaces)
+		if endpoint != "" {
+			req.EndpointConfig.A2AEndpoint = endpoint
+			req.EndpointConfig.A2AInterfaceType = interfaceType
+			s.logger.Info("extracted A2A endpoint from agent card",
+				zap.String("endpoint", endpoint),
+				zap.String("interfaceType", interfaceType))
+		}
+	}
+
 	return nil
 }
 
@@ -363,6 +377,37 @@ func (s *AgentService) populateFromMCPTool(ctx context.Context, req *models.Crea
 	}
 
 	return nil
+}
+
+// selectA2AInterface selects the preferred interface from A2A interfaces.
+// Priority: HTTP > JSON-RPC > WebSocket (HTTP is simpler and sufficient for eval)
+func selectA2AInterface(interfaces []models.A2AInterface) (interfaceType string, url string) {
+	// Prefer HTTP/JSON-RPC (simpler, sufficient for eval)
+	for _, iface := range interfaces {
+		ifaceType := strings.ToLower(iface.Type)
+		if ifaceType == "http" || ifaceType == "json-rpc" {
+			return "http", strings.TrimSuffix(iface.URL, "/")
+		}
+	}
+
+	// Fall back to WebSocket if HTTP not available
+	for _, iface := range interfaces {
+		if strings.ToLower(iface.Type) == "websocket" {
+			return "websocket", strings.TrimSuffix(iface.URL, "/")
+		}
+	}
+
+	// Use first interface if available
+	if len(interfaces) > 0 {
+		iface := interfaces[0]
+		ifaceType := strings.ToLower(iface.Type)
+		if ifaceType == "json-rpc" {
+			ifaceType = "http"
+		}
+		return ifaceType, strings.TrimSuffix(iface.URL, "/")
+	}
+
+	return "", ""
 }
 
 // Get retrieves an agent by agentID

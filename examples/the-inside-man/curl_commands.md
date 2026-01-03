@@ -311,7 +311,7 @@ curl -X POST http://localhost:8080/v1/agents \
     "industry": "security-testing",
     "endpointConfig": {
       "protocol": "a2a",
-      "endpoint": "http://host.docker.internal:8903/a2a"
+      "agentCardUrl": "http://host.docker.internal:8903/.well-known/agent.json"
     },
     "authConfig": {
       "type": "api_key",
@@ -340,7 +340,7 @@ curl -X POST http://localhost:8080/v1/agents \
     "industry": "security-testing",
     "endpointConfig": {
       "protocol": "a2a",
-      "endpoint": "http://the-inside-man:8903/a2a"
+      "agentCardUrl": "http://the-inside-man:8903/.well-known/agent.json"
     },
     "authConfig": {
       "type": "api_key",

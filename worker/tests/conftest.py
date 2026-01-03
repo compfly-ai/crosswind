@@ -124,3 +124,85 @@ asyncio.run(main())
     proc.terminate()
     proc.wait(timeout=5)
     server_file.unlink(missing_ok=True)
+
+
+@pytest.fixture(scope="session")
+def a2a_websocket_server():
+    """Start A2A test server with WebSocket-only interface.
+
+    Single smoke test fixture to verify real WebSocket communication works.
+    """
+    server_code = '''
+import asyncio
+import json
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import threading
+import websockets
+
+AGENT_CARD = {
+    "id": "ws-agent",
+    "name": "WebSocket Agent",
+    "description": "Agent with WebSocket interface",
+    "version": "1.0.0",
+    "protocolVersion": "0.2.0",
+    "provider": {"name": "Test"},
+    "capabilities": {"streaming": True},
+    "skills": [],
+    "interfaces": [{"type": "websocket", "url": "ws://localhost:8908/"}],
+}
+
+async def ws_handler(websocket):
+    async for message in websocket:
+        req = json.loads(message)
+        parts = req.get("params", {}).get("message", {}).get("parts", [])
+        text = parts[0].get("text", "") if parts else ""
+        response = {
+            "jsonrpc": "2.0",
+            "id": req.get("id"),
+            "result": {
+                "kind": "message",
+                "parts": [{"kind": "text", "text": f"Echo: {text}"}],
+            }
+        }
+        await websocket.send(json.dumps(response))
+
+class HTTPHandler(BaseHTTPRequestHandler):
+    def log_message(self, *args): pass
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps(AGENT_CARD).encode())
+
+def run_http():
+    HTTPServer(("0.0.0.0", 8907), HTTPHandler).serve_forever()
+
+async def main():
+    threading.Thread(target=run_http, daemon=True).start()
+    async with websockets.serve(ws_handler, "0.0.0.0", 8908):
+        await asyncio.Future()
+
+asyncio.run(main())
+'''
+
+    server_file = Path(__file__).parent / "_ws_server.py"
+    server_file.write_text(server_code)
+
+    proc = subprocess.Popen(
+        [sys.executable, str(server_file)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    time.sleep(1)
+
+    if proc.poll() is not None:
+        stdout, stderr = proc.communicate()
+        raise RuntimeError(f"WebSocket server failed to start: {stderr.decode()}")
+
+    yield proc
+
+    proc.terminate()
+    proc.wait(timeout=5)
+    server_file.unlink(missing_ok=True)
+
