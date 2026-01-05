@@ -83,6 +83,9 @@ ignore = ["E501"]  # Allow long lines - many are in prompts/docstrings
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "integration: marks tests requiring external services (API, MongoDB, Redis)",
+]
 
 [tool.mypy]
 python_version = "3.11"

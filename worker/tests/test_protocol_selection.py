@@ -7,7 +7,7 @@ protocol adapter based on agent configuration.
 import pytest
 from unittest.mock import patch, MagicMock
 
-from crosswind.protocols import create_adapter, A2AAdapter, OpenAPIHttpAdapter
+from crosswind.protocols import create_adapter, A2AAdapter, MCPAdapter, OpenAPIHttpAdapter
 
 
 class TestProtocolSelection:
@@ -109,6 +109,34 @@ class TestProtocolSelection:
         with pytest.raises(ValueError, match="endpoint"):
             create_adapter(agent_doc)
 
+    def test_mcp_protocol_returns_mcp_adapter(self):
+        """MCP protocol should return MCPAdapter with stored config.
+
+        After registration, the Go API stores: endpoint, mcpToolName, mcpTransport,
+        and mcpMessageField. The worker uses these directly.
+        """
+        agent_doc = {
+            "agentId": "test-agent",
+            "endpointConfig": {
+                "protocol": "mcp",
+                "endpoint": "http://localhost:9000/mcp",
+                "mcpToolName": "chat",
+                "mcpTransport": "streamable_http",
+                "mcpMessageField": "message",
+            },
+            "authConfig": {
+                "type": "none",
+            },
+        }
+
+        adapter = create_adapter(agent_doc)
+
+        assert isinstance(adapter, MCPAdapter)
+        assert adapter.endpoint == "http://localhost:9000/mcp"
+        assert adapter.tool_name == "chat"
+        assert adapter.message_field == "message"
+        assert adapter.transport == "streamable_http"
+
     def test_mcp_protocol_requires_tool_name(self):
         """MCP protocol should raise ValueError without mcpToolName."""
         agent_doc = {
@@ -122,6 +150,21 @@ class TestProtocolSelection:
         }
 
         with pytest.raises(ValueError, match="mcpToolName"):
+            create_adapter(agent_doc)
+
+    def test_mcp_protocol_requires_endpoint(self):
+        """MCP protocol should raise ValueError without endpoint."""
+        agent_doc = {
+            "agentId": "test-agent",
+            "endpointConfig": {
+                "protocol": "mcp",
+                "mcpToolName": "chat",
+                # Missing endpoint!
+            },
+            "authConfig": {},
+        }
+
+        with pytest.raises(ValueError, match="endpoint"):
             create_adapter(agent_doc)
 
     def test_openai_protocol_not_implemented(self):

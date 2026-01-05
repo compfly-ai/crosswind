@@ -582,11 +582,12 @@ func TestMCPDiscoveryFlow_ToolNotFound(t *testing.T) {
 
 	svc := &AgentService{}
 
+	// Use streamable_http transport since SSE requires real event stream
 	_, err := svc.DiscoverMCPTool(
 		t.Context(),
 		server.URL,
 		"nonexistent_tool",
-		"sse",
+		"streamable_http",
 		nil,
 	)
 
