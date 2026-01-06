@@ -185,6 +185,7 @@ func (s *AgentService) discoverMCPToolSSE(
 	}
 
 	// Establish SSE connection using pre-validated URL
+	//nolint:gosec // URL validated via ValidateEndpointURL before this function is called
 	req, err := http.NewRequestWithContext(ctx, "GET", validatedURL.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create SSE request: %w", err)
@@ -293,7 +294,7 @@ func (s *AgentService) sendSSERequest(
 		return nil, err
 	}
 
-	// URL is pre-validated by caller
+	//nolint:gosec // URL validated via ValidateEndpointURL before this function is called
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", validatedURL.String(), bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -352,7 +353,7 @@ func (s *AgentService) sendSSENotification(
 	authHeaders map[string]string,
 ) {
 	body, _ := json.Marshal(reqData)
-	// URL is pre-validated by caller
+	//nolint:gosec // URL validated via ValidateEndpointURL before this function is called
 	httpReq, _ := http.NewRequestWithContext(ctx, "POST", validatedURL.String(), bytes.NewReader(body))
 	httpReq.Header.Set("Content-Type", "application/json")
 	setAuthHeaders(httpReq, authHeaders)
@@ -500,7 +501,7 @@ func (s *AgentService) sendMCPRequest(
 		return nil, err
 	}
 
-	// URL is pre-validated by caller
+	//nolint:gosec // URL validated via ValidateEndpointURL before this function is called
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", validatedURL.String(), bytes.NewReader(body))
 	if err != nil {
 		return nil, err
