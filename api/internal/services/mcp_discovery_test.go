@@ -211,9 +211,11 @@ data: {"jsonrpc":"2.0","id":1,"result":{"serverInfo":{"name":"Test","version":"1
 				},
 			}
 
+			requestBuilder := NewSafeHTTPRequestBuilder()
 			result, err := svc.sendMCPRequest(
 				t.Context(),
 				&http.Client{},
+				requestBuilder,
 				server.URL,
 				req,
 				nil,
@@ -253,6 +255,7 @@ func TestSendMCPRequest_SessionID(t *testing.T) {
 	defer server.Close()
 
 	svc := &AgentService{}
+	requestBuilder := NewSafeHTTPRequestBuilder()
 
 	// Test 1: No session ID on first request
 	req := jsonRPCRequest{
@@ -264,6 +267,7 @@ func TestSendMCPRequest_SessionID(t *testing.T) {
 	result, err := svc.sendMCPRequest(
 		t.Context(),
 		&http.Client{},
+		requestBuilder,
 		server.URL,
 		req,
 		nil,
@@ -285,6 +289,7 @@ func TestSendMCPRequest_SessionID(t *testing.T) {
 	_, err = svc.sendMCPRequest(
 		t.Context(),
 		&http.Client{},
+		requestBuilder,
 		server.URL,
 		req,
 		nil,
@@ -326,9 +331,11 @@ func TestSendMCPRequest_AuthHeaders(t *testing.T) {
 		"X-API-Key":     "api-key-123",
 	}
 
+	requestBuilder := NewSafeHTTPRequestBuilder()
 	_, err := svc.sendMCPRequest(
 		t.Context(),
 		&http.Client{},
+		requestBuilder,
 		server.URL,
 		req,
 		authHeaders,
@@ -385,6 +392,7 @@ func TestSendMCPRequest_ErrorHandling(t *testing.T) {
 			defer server.Close()
 
 			svc := &AgentService{}
+			requestBuilder := NewSafeHTTPRequestBuilder()
 
 			req := jsonRPCRequest{
 				JSONRPC: "2.0",
@@ -395,6 +403,7 @@ func TestSendMCPRequest_ErrorHandling(t *testing.T) {
 			_, err := svc.sendMCPRequest(
 				t.Context(),
 				&http.Client{},
+				requestBuilder,
 				server.URL,
 				req,
 				nil,
@@ -582,11 +591,12 @@ func TestMCPDiscoveryFlow_ToolNotFound(t *testing.T) {
 
 	svc := &AgentService{}
 
+	// Use streamable_http transport since SSE requires real event stream
 	_, err := svc.DiscoverMCPTool(
 		t.Context(),
 		server.URL,
 		"nonexistent_tool",
-		"sse",
+		"streamable_http",
 		nil,
 	)
 

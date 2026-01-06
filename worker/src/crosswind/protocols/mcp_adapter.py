@@ -6,29 +6,19 @@ See: https://modelcontextprotocol.io/
 
 import time
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
 from typing import Any
 from uuid import uuid4
 
 import httpx
 import structlog
+from mcp import ClientSession
+from mcp.client.sse import sse_client
+from mcp.client.streamable_http import streamable_http_client
 
 from crosswind.models import AuthConfig, ConversationRequest, ConversationResponse
 from crosswind.protocols.base import ProtocolAdapter
 
 logger = structlog.get_logger()
-
-
-@dataclass
-class MCPToolSchema:
-    """MCP tool schema from discovery."""
-
-    tool_name: str
-    tool_description: str
-    input_schema: dict[str, Any]
-    message_field: str  # Primary text input field
-    server_name: str
-    server_version: str
 
 
 class MCPAdapter(ProtocolAdapter):
@@ -77,10 +67,6 @@ class MCPAdapter(ProtocolAdapter):
         if self._initialized:
             return
 
-        from mcp import ClientSession
-        from mcp.client.sse import sse_client
-        from mcp.client.streamable_http import streamable_http_client
-
         logger.debug(
             "Initializing MCP session",
             endpoint=self.endpoint,
@@ -106,9 +92,13 @@ class MCPAdapter(ProtocolAdapter):
                 http_client=self._http_client,
             )
 
-        # MCP SDK returns (read_stream, write_stream, get_session_id)
+        # MCP SDK returns (read_stream, write_stream) for SSE
+        # and (read_stream, write_stream, get_session_id) for streamable_http
         streams = await self._client_ctx.__aenter__()
-        read, write, get_session_id = streams
+        if len(streams) == 2:
+            read, write = streams
+        else:
+            read, write, _get_session_id = streams
         self._session = ClientSession(read, write)
         await self._session.__aenter__()
         await self._session.initialize()
