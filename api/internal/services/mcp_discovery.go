@@ -2,13 +2,11 @@ package services
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -113,9 +111,8 @@ func (s *AgentService) DiscoverMCPTool(
 	transport string,
 	authHeaders map[string]string,
 ) (*MCPDiscoveryResult, error) {
-	// Validate endpoint URL before making any requests - this sanitizes the URL
-	validatedURL, err := ValidateEndpointURL(endpoint)
-	if err != nil {
+	// Validate endpoint URL before making any requests
+	if _, err := ValidateEndpointURL(endpoint); err != nil {
 		return nil, err
 	}
 
@@ -123,9 +120,9 @@ func (s *AgentService) DiscoverMCPTool(
 	transport = strings.ToLower(strings.ReplaceAll(transport, "-", "_"))
 
 	if transport == "sse" {
-		return s.discoverMCPToolSSE(ctx, validatedURL, toolName, authHeaders)
+		return s.discoverMCPToolSSE(ctx, endpoint, toolName, authHeaders)
 	}
-	return s.discoverMCPToolStreamableHTTP(ctx, validatedURL, toolName, authHeaders)
+	return s.discoverMCPToolStreamableHTTP(ctx, endpoint, toolName, authHeaders)
 }
 
 // discoverMCPToolStreamableHTTP handles discovery for streamable-http transport.
@@ -133,14 +130,15 @@ func (s *AgentService) DiscoverMCPTool(
 // The endpoint URL must be pre-validated by the caller.
 func (s *AgentService) discoverMCPToolStreamableHTTP(
 	ctx context.Context,
-	validatedURL *url.URL,
+	endpoint string,
 	toolName string,
 	authHeaders map[string]string,
 ) (*MCPDiscoveryResult, error) {
 	client := &http.Client{Timeout: 30 * time.Second}
+	requestBuilder := NewSafeHTTPRequestBuilder()
 
 	// Step 1: Initialize connection
-	initResult, err := s.sendMCPRequest(ctx, client, validatedURL, newInitializeRequest(), authHeaders, "")
+	initResult, err := s.sendMCPRequest(ctx, client, requestBuilder, endpoint, newInitializeRequest(), authHeaders, "")
 	if err != nil {
 		return nil, fmt.Errorf("MCP initialize failed: %w", err)
 	}
@@ -155,10 +153,10 @@ func (s *AgentService) discoverMCPToolStreamableHTTP(
 	}
 
 	// Step 2: Send initialized notification (fire and forget)
-	_, _ = s.sendMCPRequest(ctx, client, validatedURL, newInitializedNotification(), authHeaders, sessionID)
+	_, _ = s.sendMCPRequest(ctx, client, requestBuilder, endpoint, newInitializedNotification(), authHeaders, sessionID)
 
 	// Step 3: List tools
-	toolsResp, err := s.sendMCPRequest(ctx, client, validatedURL, newToolsListRequest(), authHeaders, sessionID)
+	toolsResp, err := s.sendMCPRequest(ctx, client, requestBuilder, endpoint, newToolsListRequest(), authHeaders, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("MCP tools/list failed: %w", err)
 	}
@@ -172,7 +170,7 @@ func (s *AgentService) discoverMCPToolStreamableHTTP(
 // The endpoint URL must be pre-validated by the caller.
 func (s *AgentService) discoverMCPToolSSE(
 	ctx context.Context,
-	validatedURL *url.URL,
+	endpoint string,
 	toolName string,
 	authHeaders map[string]string,
 ) (*MCPDiscoveryResult, error) {
@@ -183,10 +181,10 @@ func (s *AgentService) discoverMCPToolSSE(
 			IdleConnTimeout:   90 * time.Second,
 		},
 	}
+	requestBuilder := NewSafeHTTPRequestBuilder()
 
-	// Establish SSE connection using pre-validated URL
-	//nolint:gosec // URL validated via ValidateEndpointURL before this function is called
-	req, err := http.NewRequestWithContext(ctx, "GET", validatedURL.String(), nil)
+	// Establish SSE connection using validated URL
+	req, err := requestBuilder.NewGETRequest(ctx, endpoint)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create SSE request: %w", err)
 	}
@@ -195,7 +193,7 @@ func (s *AgentService) discoverMCPToolSSE(
 	req.Header.Set("Connection", "keep-alive")
 	setAuthHeaders(req, authHeaders)
 
-	s.logger.Debug("Connecting to SSE endpoint", zap.String("endpoint", validatedURL.String()))
+	s.logger.Debug("Connecting to SSE endpoint", zap.String("endpoint", endpoint))
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -221,15 +219,15 @@ func (s *AgentService) discoverMCPToolSSE(
 		resp.Body.Close()
 	}()
 
-	// Wait for endpoint event - returns a validated URL
-	messageEndpointURL, err := s.waitForSSEEndpoint(ctx, validatedURL, eventChan, errChan)
+	// Wait for endpoint event - returns a validated endpoint string
+	messageEndpoint, err := s.waitForSSEEndpoint(ctx, requestBuilder, endpoint, eventChan, errChan)
 	if err != nil {
 		return nil, err
 	}
 
 	// Helper to send JSON-RPC and wait for SSE response
 	sendAndReceive := func(reqData jsonRPCRequest) (*jsonRPCResponse, error) {
-		return s.sendSSERequest(ctx, client, messageEndpointURL, reqData, authHeaders, eventChan, errChan)
+		return s.sendSSERequest(ctx, client, requestBuilder, messageEndpoint, reqData, authHeaders, eventChan, errChan)
 	}
 
 	// Step 1: Initialize
@@ -244,7 +242,7 @@ func (s *AgentService) discoverMCPToolSSE(
 	}
 
 	// Step 2: Send initialized notification (fire and forget)
-	s.sendSSENotification(ctx, client, messageEndpointURL, newInitializedNotification(), authHeaders)
+	s.sendSSENotification(ctx, client, requestBuilder, messageEndpoint, newInitializedNotification(), authHeaders)
 
 	// Step 3: List tools
 	toolsResp, err := sendAndReceive(newToolsListRequest())
@@ -256,34 +254,35 @@ func (s *AgentService) discoverMCPToolSSE(
 }
 
 // waitForSSEEndpoint waits for the endpoint event from the SSE stream.
-// Returns a validated URL for the message endpoint.
-func (s *AgentService) waitForSSEEndpoint(ctx context.Context, baseURL *url.URL, eventChan <-chan sseEvent, errChan <-chan error) (*url.URL, error) {
+// Returns a validated endpoint string for the message endpoint.
+func (s *AgentService) waitForSSEEndpoint(ctx context.Context, requestBuilder *SafeHTTPRequestBuilder, baseEndpoint string, eventChan <-chan sseEvent, errChan <-chan error) (string, error) {
 	select {
 	case event := <-eventChan:
 		if event.EventType == "endpoint" && event.Data != "" {
-			resolved, err := s.resolveAndValidateEndpointURL(baseURL, event.Data)
+			resolved, err := requestBuilder.ResolveURL(baseEndpoint, event.Data)
 			if err != nil {
-				return nil, fmt.Errorf("failed to resolve SSE endpoint: %w", err)
+				return "", fmt.Errorf("failed to resolve SSE endpoint: %w", err)
 			}
-			s.logger.Info("SSE message endpoint discovered", zap.String("endpoint", resolved.String()))
+			s.logger.Info("SSE message endpoint discovered", zap.String("endpoint", resolved))
 			return resolved, nil
 		}
-		return nil, fmt.Errorf("unexpected first event: %s", event.EventType)
+		return "", fmt.Errorf("unexpected first event: %s", event.EventType)
 	case err := <-errChan:
-		return nil, fmt.Errorf("SSE read error: %w", err)
+		return "", fmt.Errorf("SSE read error: %w", err)
 	case <-time.After(5 * time.Second):
-		return nil, fmt.Errorf("timeout waiting for endpoint event")
+		return "", fmt.Errorf("timeout waiting for endpoint event")
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return "", ctx.Err()
 	}
 }
 
 // sendSSERequest sends a JSON-RPC request and waits for response via SSE stream.
-// The endpoint URL must be pre-validated by the caller.
+// Uses SafeHTTPRequestBuilder for secure request creation.
 func (s *AgentService) sendSSERequest(
 	ctx context.Context,
 	client *http.Client,
-	validatedURL *url.URL,
+	requestBuilder *SafeHTTPRequestBuilder,
+	endpoint string,
 	reqData jsonRPCRequest,
 	authHeaders map[string]string,
 	eventChan <-chan sseEvent,
@@ -294,8 +293,7 @@ func (s *AgentService) sendSSERequest(
 		return nil, err
 	}
 
-	//nolint:gosec // URL validated via ValidateEndpointURL before this function is called
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", validatedURL.String(), bytes.NewReader(body))
+	httpReq, err := requestBuilder.NewPOSTRequest(ctx, endpoint, body)
 	if err != nil {
 		return nil, err
 	}
@@ -344,17 +342,20 @@ func (s *AgentService) sendSSERequest(
 }
 
 // sendSSENotification sends a JSON-RPC notification (no response expected).
-// The endpoint URL must be pre-validated by the caller.
+// Uses SafeHTTPRequestBuilder for secure request creation.
 func (s *AgentService) sendSSENotification(
 	ctx context.Context,
 	client *http.Client,
-	validatedURL *url.URL,
+	requestBuilder *SafeHTTPRequestBuilder,
+	endpoint string,
 	reqData jsonRPCRequest,
 	authHeaders map[string]string,
 ) {
 	body, _ := json.Marshal(reqData)
-	//nolint:gosec // URL validated via ValidateEndpointURL before this function is called
-	httpReq, _ := http.NewRequestWithContext(ctx, "POST", validatedURL.String(), bytes.NewReader(body))
+	httpReq, err := requestBuilder.NewPOSTRequest(ctx, endpoint, body)
+	if err != nil {
+		return // Silently fail for notification
+	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	setAuthHeaders(httpReq, authHeaders)
 	_, _ = client.Do(httpReq) // Fire and forget - ignore response
@@ -407,27 +408,6 @@ func (s *AgentService) readSSEEvents(body io.ReadCloser, eventChan chan<- sseEve
 			eventData = ""
 		}
 	}
-}
-
-// resolveAndValidateEndpointURL resolves a potentially relative endpoint path against the base URL,
-// then validates and sanitizes the result. Returns a validated *url.URL.
-func (s *AgentService) resolveAndValidateEndpointURL(baseURL *url.URL, endpointPath string) (*url.URL, error) {
-	// If it's already absolute, validate it directly
-	if strings.HasPrefix(endpointPath, "http://") || strings.HasPrefix(endpointPath, "https://") {
-		return ValidateEndpointURL(endpointPath)
-	}
-
-	// Parse endpoint path (may include query params like ?sessionId=xxx)
-	ref, err := url.Parse(endpointPath)
-	if err != nil {
-		return nil, fmt.Errorf("invalid endpoint path: %w", err)
-	}
-
-	// Resolve against base
-	resolved := baseURL.ResolveReference(ref)
-
-	// Validate the resolved URL
-	return ValidateEndpointURL(resolved.String())
 }
 
 // parseToolsResponse extracts tool information from the tools/list response.
@@ -487,11 +467,12 @@ type mcpRequestResult struct {
 // sendMCPRequest sends a JSON-RPC request to the MCP server.
 // Handles SSE response format used by streamable-http transport.
 // Returns the response and any session ID from the response headers.
-// The endpoint URL must be pre-validated by the caller.
+// Uses SafeHTTPRequestBuilder for secure request creation.
 func (s *AgentService) sendMCPRequest(
 	ctx context.Context,
 	client *http.Client,
-	validatedURL *url.URL,
+	requestBuilder *SafeHTTPRequestBuilder,
+	endpoint string,
 	req jsonRPCRequest,
 	authHeaders map[string]string,
 	sessionID string,
@@ -501,8 +482,7 @@ func (s *AgentService) sendMCPRequest(
 		return nil, err
 	}
 
-	//nolint:gosec // URL validated via ValidateEndpointURL before this function is called
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", validatedURL.String(), bytes.NewReader(body))
+	httpReq, err := requestBuilder.NewPOSTRequest(ctx, endpoint, body)
 	if err != nil {
 		return nil, err
 	}

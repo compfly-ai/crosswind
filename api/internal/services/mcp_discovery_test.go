@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"testing"
 )
 
@@ -212,11 +211,12 @@ data: {"jsonrpc":"2.0","id":1,"result":{"serverInfo":{"name":"Test","version":"1
 				},
 			}
 
-			parsedURL, _ := url.Parse(server.URL)
+			requestBuilder := NewSafeHTTPRequestBuilder()
 			result, err := svc.sendMCPRequest(
 				t.Context(),
 				&http.Client{},
-				parsedURL,
+				requestBuilder,
+				server.URL,
 				req,
 				nil,
 				"",
@@ -255,6 +255,7 @@ func TestSendMCPRequest_SessionID(t *testing.T) {
 	defer server.Close()
 
 	svc := &AgentService{}
+	requestBuilder := NewSafeHTTPRequestBuilder()
 
 	// Test 1: No session ID on first request
 	req := jsonRPCRequest{
@@ -263,11 +264,11 @@ func TestSendMCPRequest_SessionID(t *testing.T) {
 		Method:  "initialize",
 	}
 
-	parsedURL, _ := url.Parse(server.URL)
 	result, err := svc.sendMCPRequest(
 		t.Context(),
 		&http.Client{},
-		parsedURL,
+		requestBuilder,
+		server.URL,
 		req,
 		nil,
 		"", // No session ID
@@ -288,7 +289,8 @@ func TestSendMCPRequest_SessionID(t *testing.T) {
 	_, err = svc.sendMCPRequest(
 		t.Context(),
 		&http.Client{},
-		parsedURL,
+		requestBuilder,
+		server.URL,
 		req,
 		nil,
 		"client-session-456", // Passing session ID
@@ -329,11 +331,12 @@ func TestSendMCPRequest_AuthHeaders(t *testing.T) {
 		"X-API-Key":     "api-key-123",
 	}
 
-	parsedURL, _ := url.Parse(server.URL)
+	requestBuilder := NewSafeHTTPRequestBuilder()
 	_, err := svc.sendMCPRequest(
 		t.Context(),
 		&http.Client{},
-		parsedURL,
+		requestBuilder,
+		server.URL,
 		req,
 		authHeaders,
 		"",
@@ -389,6 +392,7 @@ func TestSendMCPRequest_ErrorHandling(t *testing.T) {
 			defer server.Close()
 
 			svc := &AgentService{}
+			requestBuilder := NewSafeHTTPRequestBuilder()
 
 			req := jsonRPCRequest{
 				JSONRPC: "2.0",
@@ -396,11 +400,11 @@ func TestSendMCPRequest_ErrorHandling(t *testing.T) {
 				Method:  "test",
 			}
 
-			parsedURL, _ := url.Parse(server.URL)
 			_, err := svc.sendMCPRequest(
 				t.Context(),
 				&http.Client{},
-				parsedURL,
+				requestBuilder,
+				server.URL,
 				req,
 				nil,
 				"",
