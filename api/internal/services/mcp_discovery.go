@@ -188,6 +188,7 @@ func (s *AgentService) discoverMCPToolSSE(
 	}
 
 	// Establish SSE connection
+	// #nosec G107 -- URL validated by ValidateEndpointURL above
 	req, err := http.NewRequestWithContext(ctx, "GET", validatedURL.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create SSE request: %w", err)
@@ -300,6 +301,7 @@ func (s *AgentService) sendSSERequest(
 		return nil, err
 	}
 
+	// #nosec G107 -- URL validated by ValidateEndpointURL above
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", validatedURL.String(), bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -363,10 +365,11 @@ func (s *AgentService) sendSSENotification(
 	}
 
 	body, _ := json.Marshal(reqData)
+	// #nosec G107 -- URL validated by ValidateEndpointURL above
 	httpReq, _ := http.NewRequestWithContext(ctx, "POST", validatedURL.String(), bytes.NewReader(body))
 	httpReq.Header.Set("Content-Type", "application/json")
 	setAuthHeaders(httpReq, authHeaders)
-	client.Do(httpReq)
+	_, _ = client.Do(httpReq) // Fire and forget - ignore response
 }
 
 // sseEvent represents a parsed SSE event
@@ -518,6 +521,7 @@ func (s *AgentService) sendMCPRequest(
 		return nil, err
 	}
 
+	// #nosec G107 -- URL validated by ValidateEndpointURL above
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", validatedURL.String(), bytes.NewReader(body))
 	if err != nil {
 		return nil, err
