@@ -113,6 +113,11 @@ func (s *AgentService) DiscoverMCPTool(
 	transport string,
 	authHeaders map[string]string,
 ) (*MCPDiscoveryResult, error) {
+	// Validate endpoint URL before making any requests
+	if _, err := ValidateEndpointURL(endpoint); err != nil {
+		return nil, err
+	}
+
 	// Normalize transport name
 	transport = strings.ToLower(strings.ReplaceAll(transport, "-", "_"))
 
@@ -168,6 +173,12 @@ func (s *AgentService) discoverMCPToolSSE(
 	toolName string,
 	authHeaders map[string]string,
 ) (*MCPDiscoveryResult, error) {
+	// Validate endpoint URL
+	validatedURL, err := ValidateEndpointURL(endpoint)
+	if err != nil {
+		return nil, err
+	}
+
 	client := &http.Client{
 		Transport: &http.Transport{
 			DisableKeepAlives: false,
@@ -177,7 +188,7 @@ func (s *AgentService) discoverMCPToolSSE(
 	}
 
 	// Establish SSE connection
-	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", validatedURL.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create SSE request: %w", err)
 	}
@@ -278,12 +289,18 @@ func (s *AgentService) sendSSERequest(
 	eventChan <-chan sseEvent,
 	errChan <-chan error,
 ) (*jsonRPCResponse, error) {
+	// Validate endpoint URL (messageEndpoint from SSE stream)
+	validatedURL, err := ValidateEndpointURL(endpoint)
+	if err != nil {
+		return nil, err
+	}
+
 	body, err := json.Marshal(reqData)
 	if err != nil {
 		return nil, err
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", validatedURL.String(), bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -339,8 +356,14 @@ func (s *AgentService) sendSSENotification(
 	reqData jsonRPCRequest,
 	authHeaders map[string]string,
 ) {
+	// Validate endpoint URL (messageEndpoint from SSE stream)
+	validatedURL, err := ValidateEndpointURL(endpoint)
+	if err != nil {
+		return // Silently fail for notifications
+	}
+
 	body, _ := json.Marshal(reqData)
-	httpReq, _ := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(body))
+	httpReq, _ := http.NewRequestWithContext(ctx, "POST", validatedURL.String(), bytes.NewReader(body))
 	httpReq.Header.Set("Content-Type", "application/json")
 	setAuthHeaders(httpReq, authHeaders)
 	client.Do(httpReq)
@@ -484,12 +507,18 @@ func (s *AgentService) sendMCPRequest(
 	authHeaders map[string]string,
 	sessionID string,
 ) (*mcpRequestResult, error) {
+	// Validate and sanitize endpoint URL
+	validatedURL, err := ValidateEndpointURL(endpoint)
+	if err != nil {
+		return nil, err
+	}
+
 	body, err := json.Marshal(req)
 	if err != nil {
 		return nil, err
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", validatedURL.String(), bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
