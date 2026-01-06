@@ -132,7 +132,10 @@ def create_adapter(agent_doc: dict[str, Any]) -> ProtocolAdapter:
             raise ValueError("MCP protocol requires mcpToolName in endpointConfig")
 
         transport = endpoint_config.get("mcpTransport", "streamable_http")
-        message_field = endpoint_config.get("mcpMessageField", "message")
+
+        # Get message field from mcpToolSchema (populated during agent creation)
+        mcp_tool_schema = agent_doc.get("mcpToolSchema", {})
+        message_field = mcp_tool_schema.get("messageField", "message")
 
         return MCPAdapter(
             endpoint=endpoint,

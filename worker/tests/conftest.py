@@ -206,5 +206,3 @@ asyncio.run(main())
     proc.wait(timeout=5)
     server_file.unlink(missing_ok=True)
 
-
-

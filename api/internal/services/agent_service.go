@@ -143,6 +143,7 @@ func (s *AgentService) Create(ctx context.Context, req *models.CreateAgentReques
 		RateLimits:           req.RateLimits,
 		SessionStrategy:      sessionStrategy,
 		DeclaredCapabilities: req.DeclaredCapabilities,
+		MCPToolSchema:        req.MCPToolSchema,
 		Status:               models.AgentStatusActive,
 	}
 
@@ -356,8 +357,16 @@ func (s *AgentService) populateFromMCPTool(ctx context.Context, req *models.Crea
 		req.Industry = "Technology"
 	}
 
-	// Store message field for eval-time prompt mapping
-	req.EndpointConfig.MCPMessageField = FindMessageField(result.Tool.InputSchema)
+	// Store tool schema for eval-time prompt mapping
+	req.MCPToolSchema = &models.MCPToolSchema{
+		ToolName:        result.Tool.Name,
+		ToolDescription: result.Tool.Description,
+		InputSchema:     result.Tool.InputSchema,
+		MessageField:    FindMessageField(result.Tool.InputSchema),
+		ServerName:      result.Server.Name,
+		ServerVersion:   result.Server.Version,
+		DiscoveredAt:    time.Now(),
+	}
 
 	// Set declaredCapabilities with just this tool
 	if req.DeclaredCapabilities == nil {

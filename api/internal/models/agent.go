@@ -18,6 +18,7 @@ type Agent struct {
 	EndpointConfig         EndpointConfig          `bson:"endpointConfig" json:"endpointConfig"`
 	AuthConfig             AuthConfig              `bson:"authConfig" json:"authConfig"`
 	InferredSchema         *InferredAPISchema      `bson:"inferredSchema,omitempty" json:"inferredSchema,omitempty"`
+	MCPToolSchema          *MCPToolSchema          `bson:"mcpToolSchema,omitempty" json:"mcpToolSchema,omitempty"`
 	RateLimits             *RateLimits             `bson:"rateLimits,omitempty" json:"rateLimits,omitempty"`
 	SessionStrategy        string                  `bson:"sessionStrategy" json:"sessionStrategy"`
 	DeclaredCapabilities   *AgentCapabilities      `bson:"declaredCapabilities,omitempty" json:"declaredCapabilities,omitempty"`
@@ -85,8 +86,7 @@ type EndpointConfig struct {
 	MCPTransport string `bson:"mcpTransport,omitempty" json:"mcpTransport,omitempty"`
 	// MCP tool name - the specific tool to treat as an agent
 	MCPToolName string `bson:"mcpToolName,omitempty" json:"mcpToolName,omitempty"`
-	// MCP message field - the input parameter name for the prompt (e.g., "message", "query")
-	MCPMessageField string `bson:"mcpMessageField,omitempty" json:"mcpMessageField,omitempty"`
+	// Uses Endpoint field for MCP server URL
 }
 
 // AuthConfig holds authentication configuration for the agent (stored in DB)
@@ -220,6 +220,17 @@ type InferredAPISchema struct {
 	RawAnalysis     string    `bson:"rawAnalysis,omitempty" json:"rawAnalysis,omitempty"` // GPT's reasoning
 }
 
+// MCPToolSchema stores discovered MCP tool schema for eval-time prompt mapping
+type MCPToolSchema struct {
+	ToolName        string                 `bson:"toolName" json:"toolName"`
+	ToolDescription string                 `bson:"toolDescription" json:"toolDescription"`
+	InputSchema     map[string]interface{} `bson:"inputSchema" json:"inputSchema"`
+	MessageField    string                 `bson:"messageField" json:"messageField"` // Primary text input field
+	ServerName      string                 `bson:"serverName" json:"serverName"`
+	ServerVersion   string                 `bson:"serverVersion" json:"serverVersion"`
+	DiscoveredAt    time.Time              `bson:"discoveredAt" json:"discoveredAt"`
+}
+
 // AgentStatus constants
 const (
 	AgentStatusActive   = "active"
@@ -277,6 +288,7 @@ type CreateAgentRequest struct {
 	RateLimits           *RateLimits        `json:"rateLimits,omitempty"`
 	SessionStrategy      string             `json:"sessionStrategy,omitempty"`
 	DeclaredCapabilities *AgentCapabilities `json:"declaredCapabilities,omitempty"`
+	MCPToolSchema        *MCPToolSchema     `json:"-"` // Internal use - populated during MCP discovery
 }
 
 // UpdateAgentRequest represents the request body for updating an agent
