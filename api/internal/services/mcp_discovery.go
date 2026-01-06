@@ -1,7 +1,6 @@
 package services
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -10,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/r3labs/sse/v2"
 	"go.uber.org/zap"
 )
 
@@ -174,49 +174,36 @@ func (s *AgentService) discoverMCPToolSSE(
 	toolName string,
 	authHeaders map[string]string,
 ) (*MCPDiscoveryResult, error) {
-	client := &http.Client{
-		Transport: &http.Transport{
-			DisableKeepAlives: false,
-			MaxIdleConns:      10,
-			IdleConnTimeout:   90 * time.Second,
-		},
-	}
 	requestBuilder := NewSafeHTTPRequestBuilder()
 
-	// Establish SSE connection using validated URL
-	req, err := requestBuilder.NewGETRequest(ctx, endpoint)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create SSE request: %w", err)
+	// Create SSE client using r3labs/sse for spec-compliant event parsing
+	sseClient := sse.NewClient(endpoint)
+	sseClient.ReconnectStrategy = nil // Disable auto-reconnect for discovery
+
+	// Set auth headers
+	for key, value := range authHeaders {
+		sseClient.Headers[key] = value
 	}
-	req.Header.Set("Accept", "text/event-stream")
-	req.Header.Set("Cache-Control", "no-cache")
-	req.Header.Set("Connection", "keep-alive")
-	setAuthHeaders(req, authHeaders)
 
 	s.logger.Debug("Connecting to SSE endpoint", zap.String("endpoint", endpoint))
 
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("SSE connection failed: %w", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
-		return nil, fmt.Errorf("SSE endpoint returned status %d", resp.StatusCode)
-	}
+	// Channel to receive SSE events
+	eventChan := make(chan *sse.Event, 10)
 
-	// Channels for events
-	eventChan := make(chan sseEvent, 10)
+	// Create cancellable context for SSE subscription
+	sseCtx, cancelSSE := context.WithCancel(ctx)
+	defer cancelSSE()
+
+	// Subscribe to SSE events in background
 	errChan := make(chan error, 1)
-	done := make(chan struct{})
-
-	// Start reading SSE events in background
 	go func() {
-		defer close(eventChan)
-		s.readSSEEvents(resp.Body, eventChan, errChan, done)
-	}()
-	defer func() {
-		close(done)
-		resp.Body.Close()
+		err := sseClient.SubscribeChanRawWithContext(sseCtx, eventChan)
+		if err != nil && err != context.Canceled {
+			select {
+			case errChan <- err:
+			default:
+			}
+		}
 	}()
 
 	// Wait for endpoint event - returns a validated endpoint string
@@ -225,9 +212,12 @@ func (s *AgentService) discoverMCPToolSSE(
 		return nil, err
 	}
 
+	// HTTP client for POST requests
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+
 	// Helper to send JSON-RPC and wait for SSE response
 	sendAndReceive := func(reqData jsonRPCRequest) (*jsonRPCResponse, error) {
-		return s.sendSSERequest(ctx, client, requestBuilder, messageEndpoint, reqData, authHeaders, eventChan, errChan)
+		return s.sendSSERequest(ctx, httpClient, requestBuilder, messageEndpoint, reqData, authHeaders, eventChan, errChan)
 	}
 
 	// Step 1: Initialize
@@ -242,7 +232,7 @@ func (s *AgentService) discoverMCPToolSSE(
 	}
 
 	// Step 2: Send initialized notification (fire and forget)
-	s.sendSSENotification(ctx, client, requestBuilder, messageEndpoint, newInitializedNotification(), authHeaders)
+	s.sendSSENotification(ctx, httpClient, requestBuilder, messageEndpoint, newInitializedNotification(), authHeaders)
 
 	// Step 3: List tools
 	toolsResp, err := sendAndReceive(newToolsListRequest())
@@ -255,18 +245,20 @@ func (s *AgentService) discoverMCPToolSSE(
 
 // waitForSSEEndpoint waits for the endpoint event from the SSE stream.
 // Returns a validated endpoint string for the message endpoint.
-func (s *AgentService) waitForSSEEndpoint(ctx context.Context, requestBuilder *SafeHTTPRequestBuilder, baseEndpoint string, eventChan <-chan sseEvent, errChan <-chan error) (string, error) {
+func (s *AgentService) waitForSSEEndpoint(ctx context.Context, requestBuilder *SafeHTTPRequestBuilder, baseEndpoint string, eventChan <-chan *sse.Event, errChan <-chan error) (string, error) {
 	select {
 	case event := <-eventChan:
-		if event.EventType == "endpoint" && event.Data != "" {
-			resolved, err := requestBuilder.ResolveURL(baseEndpoint, event.Data)
+		eventType := string(event.Event)
+		eventData := string(event.Data)
+		if eventType == "endpoint" && eventData != "" {
+			resolved, err := requestBuilder.ResolveURL(baseEndpoint, eventData)
 			if err != nil {
 				return "", fmt.Errorf("failed to resolve SSE endpoint: %w", err)
 			}
 			s.logger.Info("SSE message endpoint discovered", zap.String("endpoint", resolved))
 			return resolved, nil
 		}
-		return "", fmt.Errorf("unexpected first event: %s", event.EventType)
+		return "", fmt.Errorf("unexpected first event: %s", eventType)
 	case err := <-errChan:
 		return "", fmt.Errorf("SSE read error: %w", err)
 	case <-time.After(5 * time.Second):
@@ -285,7 +277,7 @@ func (s *AgentService) sendSSERequest(
 	endpoint string,
 	reqData jsonRPCRequest,
 	authHeaders map[string]string,
-	eventChan <-chan sseEvent,
+	eventChan <-chan *sse.Event,
 	errChan <-chan error,
 ) (*jsonRPCResponse, error) {
 	body, err := json.Marshal(reqData)
@@ -319,9 +311,11 @@ func (s *AgentService) sendSSERequest(
 			if !ok {
 				return nil, fmt.Errorf("SSE channel closed")
 			}
-			if event.EventType == "message" {
+			eventType := string(event.Event)
+			eventData := string(event.Data)
+			if eventType == "message" {
 				var rpcResp jsonRPCResponse
-				if err := json.Unmarshal([]byte(event.Data), &rpcResp); err != nil {
+				if err := json.Unmarshal([]byte(eventData), &rpcResp); err != nil {
 					continue
 				}
 				if fmt.Sprintf("%v", rpcResp.ID) == requestID {
@@ -359,55 +353,6 @@ func (s *AgentService) sendSSENotification(
 	httpReq.Header.Set("Content-Type", "application/json")
 	setAuthHeaders(httpReq, authHeaders)
 	_, _ = client.Do(httpReq) // Fire and forget - ignore response
-}
-
-// sseEvent represents a parsed SSE event
-type sseEvent struct {
-	EventType string
-	Data      string
-}
-
-// readSSEEvents reads events from an SSE stream
-func (s *AgentService) readSSEEvents(body io.ReadCloser, eventChan chan<- sseEvent, errChan chan<- error, done <-chan struct{}) {
-	reader := bufio.NewReader(body)
-	var eventType, eventData string
-
-	for {
-		select {
-		case <-done:
-			return
-		default:
-		}
-
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			if err != io.EOF {
-				select {
-				case errChan <- err:
-				default:
-				}
-			}
-			return
-		}
-
-		line = strings.TrimSuffix(line, "\n")
-		line = strings.TrimSuffix(line, "\r")
-
-		if strings.HasPrefix(line, "event:") {
-			eventType = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
-		} else if strings.HasPrefix(line, "data:") {
-			eventData = strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-		} else if line == "" && eventType != "" {
-			// Complete event
-			select {
-			case eventChan <- sseEvent{EventType: eventType, Data: eventData}:
-			case <-done:
-				return
-			}
-			eventType = ""
-			eventData = ""
-		}
-	}
 }
 
 // parseToolsResponse extracts tool information from the tools/list response.

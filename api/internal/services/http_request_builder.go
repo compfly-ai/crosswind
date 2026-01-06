@@ -17,22 +17,6 @@ func NewSafeHTTPRequestBuilder() *SafeHTTPRequestBuilder {
 	return &SafeHTTPRequestBuilder{}
 }
 
-// NewGETRequest creates a GET request with a validated URL.
-// Returns an error if the URL fails validation.
-func (b *SafeHTTPRequestBuilder) NewGETRequest(ctx context.Context, endpoint string) (*http.Request, error) {
-	validatedURL, err := ValidateEndpointURL(endpoint)
-	if err != nil {
-		return nil, fmt.Errorf("URL validation failed: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "GET", validatedURL.String(), nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create GET request: %w", err)
-	}
-
-	return req, nil
-}
-
 // NewPOSTRequest creates a POST request with a validated URL and body.
 // Returns an error if the URL fails validation.
 func (b *SafeHTTPRequestBuilder) NewPOSTRequest(ctx context.Context, endpoint string, body []byte) (*http.Request, error) {
@@ -47,20 +31,6 @@ func (b *SafeHTTPRequestBuilder) NewPOSTRequest(ctx context.Context, endpoint st
 	}
 
 	return req, nil
-}
-
-// NewGETRequestFromValidatedURL creates a GET request from an already-validated URL.
-// Use this when the URL has been validated earlier in the call chain.
-func (b *SafeHTTPRequestBuilder) NewGETRequestFromValidatedURL(ctx context.Context, validatedEndpoint string) (*http.Request, error) {
-	// Re-validate to satisfy static analysis - validation is idempotent
-	return b.NewGETRequest(ctx, validatedEndpoint)
-}
-
-// NewPOSTRequestFromValidatedURL creates a POST request from an already-validated URL.
-// Use this when the URL has been validated earlier in the call chain.
-func (b *SafeHTTPRequestBuilder) NewPOSTRequestFromValidatedURL(ctx context.Context, validatedEndpoint string, body []byte) (*http.Request, error) {
-	// Re-validate to satisfy static analysis - validation is idempotent
-	return b.NewPOSTRequest(ctx, validatedEndpoint, body)
 }
 
 // ResolveURL resolves a potentially relative endpoint path against a base URL.

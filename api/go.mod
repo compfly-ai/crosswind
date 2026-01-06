@@ -11,6 +11,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1
 	github.com/openai/openai-go v0.1.0-beta.10
+	github.com/r3labs/sse/v2 v2.10.0
 	github.com/redis/go-redis/v9 v9.7.0
 	go.mongodb.org/mongo-driver v1.17.1
 	go.uber.org/zap v1.27.0
@@ -66,7 +67,6 @@ require (
 	github.com/pelletier/go-toml/v2 v2.2.2 // indirect
 	github.com/pierrec/lz4/v4 v4.1.22 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
-	github.com/r3labs/sse/v2 v2.10.0 // indirect
 	github.com/segmentio/asm v1.2.1 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.6.0 // indirect
