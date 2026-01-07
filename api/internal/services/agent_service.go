@@ -143,7 +143,6 @@ func (s *AgentService) Create(ctx context.Context, req *models.CreateAgentReques
 		RateLimits:           req.RateLimits,
 		SessionStrategy:      sessionStrategy,
 		DeclaredCapabilities: req.DeclaredCapabilities,
-		MCPToolSchema:        req.MCPToolSchema,
 		Status:               models.AgentStatusActive,
 	}
 
@@ -208,6 +207,92 @@ func (s *AgentService) analyzeAgentInBackground(parentCtx context.Context, agent
 			zap.String("agentId", agent.AgentID),
 			zap.String("error", result.Error))
 	}
+}
+
+// rediscoverA2AInBackground re-fetches the A2A agent card and updates agent fields.
+func (s *AgentService) rediscoverA2AInBackground(parentCtx context.Context, agent *models.Agent) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(parentCtx), 30*time.Second)
+	defer cancel()
+
+	s.logger.Info("starting background A2A re-discovery",
+		zap.String("agentId", agent.AgentID))
+
+	// Build a temporary request to reuse populateFromA2AAgentCard
+	req := &models.CreateAgentRequest{
+		EndpointConfig: agent.EndpointConfig,
+	}
+
+	if err := s.populateFromA2AAgentCard(ctx, req); err != nil {
+		s.logger.Error("A2A re-discovery failed",
+			zap.String("agentId", agent.AgentID),
+			zap.Error(err))
+		return
+	}
+
+	// Update agent with all discovered values from agent card
+	update := bson.M{
+		"name":                          req.Name,
+		"description":                   req.Description,
+		"goal":                          req.Goal,
+		"declaredCapabilities":          req.DeclaredCapabilities,
+		"endpointConfig.a2aEndpoint":    req.EndpointConfig.A2AEndpoint,
+		"endpointConfig.a2aInterfaceType": req.EndpointConfig.A2AInterfaceType,
+		"updatedAt":                     time.Now(),
+	}
+
+	if err := s.agentRepo.Update(ctx, agent.AgentID, update); err != nil {
+		s.logger.Error("failed to update agent with A2A discovery",
+			zap.String("agentId", agent.AgentID),
+			zap.Error(err))
+		return
+	}
+
+	s.logger.Info("A2A re-discovery completed",
+		zap.String("agentId", agent.AgentID),
+		zap.String("name", req.Name))
+}
+
+// rediscoverMCPInBackground re-fetches the MCP tool info and updates agent fields.
+func (s *AgentService) rediscoverMCPInBackground(parentCtx context.Context, agent *models.Agent) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(parentCtx), 30*time.Second)
+	defer cancel()
+
+	s.logger.Info("starting background MCP re-discovery",
+		zap.String("agentId", agent.AgentID))
+
+	// Build a temporary request to reuse populateFromMCPTool
+	req := &models.CreateAgentRequest{
+		EndpointConfig: agent.EndpointConfig,
+	}
+
+	if err := s.populateFromMCPTool(ctx, req); err != nil {
+		s.logger.Error("MCP re-discovery failed",
+			zap.String("agentId", agent.AgentID),
+			zap.Error(err))
+		return
+	}
+
+	// Update agent with discovered values
+	update := bson.M{
+		"name":                            req.Name,
+		"description":                     req.Description,
+		"goal":                            req.Goal,
+		"declaredCapabilities":            req.DeclaredCapabilities,
+		"endpointConfig.mcpMessageField":  req.EndpointConfig.MCPMessageField,
+		"updatedAt":                       time.Now(),
+	}
+
+	if err := s.agentRepo.Update(ctx, agent.AgentID, update); err != nil {
+		s.logger.Error("failed to update agent with MCP discovery",
+			zap.String("agentId", agent.AgentID),
+			zap.Error(err))
+		return
+	}
+
+	s.logger.Info("MCP re-discovery completed",
+		zap.String("agentId", agent.AgentID),
+		zap.String("tool", req.Name),
+		zap.String("messageField", req.EndpointConfig.MCPMessageField))
 }
 
 // populateFromA2AAgentCard fetches the A2A agent card and populates request fields.
@@ -357,16 +442,8 @@ func (s *AgentService) populateFromMCPTool(ctx context.Context, req *models.Crea
 		req.Industry = "Technology"
 	}
 
-	// Store tool schema for eval-time prompt mapping
-	req.MCPToolSchema = &models.MCPToolSchema{
-		ToolName:        result.Tool.Name,
-		ToolDescription: result.Tool.Description,
-		InputSchema:     result.Tool.InputSchema,
-		MessageField:    FindMessageField(result.Tool.InputSchema),
-		ServerName:      result.Server.Name,
-		ServerVersion:   result.Server.Version,
-		DiscoveredAt:    time.Now(),
-	}
+	// Store message field for eval-time prompt mapping
+	req.EndpointConfig.MCPMessageField = FindMessageField(result.Tool.InputSchema)
 
 	// Set declaredCapabilities with just this tool
 	if req.DeclaredCapabilities == nil {
@@ -516,7 +593,9 @@ func (s *AgentService) Update(ctx context.Context, agentID string, req *models.U
 			req.EndpointConfig.BaseURL != existingAgent.EndpointConfig.BaseURL ||
 			req.EndpointConfig.SessionEndpoint != existingAgent.EndpointConfig.SessionEndpoint ||
 			req.EndpointConfig.SpecURL != existingAgent.EndpointConfig.SpecURL ||
-			req.EndpointConfig.Protocol != existingAgent.EndpointConfig.Protocol {
+			req.EndpointConfig.Protocol != existingAgent.EndpointConfig.Protocol ||
+			req.EndpointConfig.AgentCardURL != existingAgent.EndpointConfig.AgentCardURL ||
+			req.EndpointConfig.MCPToolName != existingAgent.EndpointConfig.MCPToolName {
 			endpointConfigChanged = true
 			// Clear existing inferred schema since endpoint changed
 			update["inferredSchema"] = nil
@@ -561,14 +640,26 @@ func (s *AgentService) Update(ctx context.Context, agentID string, req *models.U
 		return nil, err
 	}
 
-	// Trigger background API analysis if endpoint config changed (only for custom HTTP)
-	if endpointConfigChanged && s.apiAnalyzer != nil {
-		// Get the updated agent for analysis
+	// Trigger re-discovery if endpoint config changed
+	if endpointConfigChanged {
 		updatedAgent, err := s.agentRepo.FindByID(ctx, agentID)
-		if err == nil && updatedAgent.EndpointConfig.Protocol == models.ProtocolCustom {
-			s.logger.Info("endpoint config changed, triggering API re-analysis",
-				zap.String("agentId", agentID))
-			go s.analyzeAgentInBackground(ctx, updatedAgent)
+		if err == nil {
+			switch updatedAgent.EndpointConfig.Protocol {
+			case models.ProtocolCustom:
+				if s.apiAnalyzer != nil {
+					s.logger.Info("endpoint config changed, triggering API re-analysis",
+						zap.String("agentId", agentID))
+					go s.analyzeAgentInBackground(ctx, updatedAgent)
+				}
+			case models.ProtocolA2A:
+				s.logger.Info("endpoint config changed, triggering A2A re-discovery",
+					zap.String("agentId", agentID))
+				go s.rediscoverA2AInBackground(ctx, updatedAgent)
+			case models.ProtocolMCP:
+				s.logger.Info("endpoint config changed, triggering MCP re-discovery",
+					zap.String("agentId", agentID))
+				go s.rediscoverMCPInBackground(ctx, updatedAgent)
+			}
 		}
 	}
 
