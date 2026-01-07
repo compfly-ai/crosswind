@@ -64,7 +64,7 @@ Crosswind includes curated evaluation datasets. Seed them:
 
 ```bash
 cd ../scripts
-uv sync
+uv venv; source .venv/bin/activate; uv sync
 uv run python seed_datasets.py
 ```
 

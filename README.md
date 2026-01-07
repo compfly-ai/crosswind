@@ -4,7 +4,7 @@ Security evaluation for AI agents. Test your agentic systems against prompt inje
 
 ## What It Does
 
-Crosswind tests your AI agent by sending adversarial prompts and analyzing responses. It reports where your defenses fail and how to fix them.
+Crosswind tests your AI agent against adversarial scenarios: prompt injections that target tool calls, jailbreaks that exploit conversation context, and attacks that chain across multiple turns. You get a report showing exactly where your agent's defenses break down.
 
 **Red Team (Security)**
 - Prompt injection via tool outputs
@@ -57,7 +57,7 @@ curl -X POST http://localhost:8080/v1/agents \
   -H "Content-Type: application/json" \
   -d '{
     "name": "My Agent",
-    "description": "Customer support bot",
+    "description": "Customer support agent",
     "goal": "Help customers",
     "industry": "retail",
     "endpointConfig": {
@@ -78,6 +78,11 @@ curl -X POST http://localhost:8080/v1/agents/{agentId}/evals \
 # 3. Get results
 curl http://localhost:8080/v1/evals/{runId}/results \
   -H "Authorization: Bearer $API_KEY"
+
+# 4. Download a report
+curl http://localhost:8080/v1/evals/{runId}/report \
+  -H "Authorization: Bearer $API_KEY" \
+  -o report.html
 ```
 
 ## Evaluation Modes

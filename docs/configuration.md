@@ -23,28 +23,13 @@ docker compose up -d
 | `API_KEY` | Bearer token for API authentication | Any secure string |
 | `OPENAI_API_KEY` | OpenAI API key for LLM judgment | `sk-...` |
 
-## All Variables
-
-### Security
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `ENCRYPTION_KEY` | Yes | - | 256-bit hex key for AES encryption |
-| `API_KEY` | Yes | - | API authentication token |
-
-Generate encryption key:
-```bash
-openssl rand -hex 32
-```
+## Optional Variables
 
 ### LLM Configuration
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `OPENAI_API_KEY` | Yes* | - | OpenAI API key |
 | `GROQ_API_KEY` | No | - | Groq API key (alternative to OpenAI) |
-
-*At least one LLM key is required for judgment.
 
 ### Database
 
