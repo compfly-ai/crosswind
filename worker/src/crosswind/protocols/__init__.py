@@ -133,9 +133,8 @@ def create_adapter(agent_doc: dict[str, Any]) -> ProtocolAdapter:
 
         transport = endpoint_config.get("mcpTransport", "streamable_http")
 
-        # Get message field from mcpToolSchema (populated during agent creation)
-        mcp_tool_schema = agent_doc.get("mcpToolSchema", {})
-        message_field = mcp_tool_schema.get("messageField", "message")
+        # Get message field from endpointConfig (populated during agent creation)
+        message_field = endpoint_config.get("mcpMessageField", "message")
 
         return MCPAdapter(
             endpoint=endpoint,

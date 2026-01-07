@@ -112,16 +112,12 @@ def run_test(api_url: str = "http://localhost:8081", api_key: str | None = None)
     if not agent.get("goal"):
         errors.append("goal not auto-populated")
 
-    mcp_schema = agent.get("mcpToolSchema")
-    if not mcp_schema:
-        errors.append("mcpToolSchema not populated")
-    else:
-        if mcp_schema.get("messageField") != "message":
-            errors.append(f"messageField should be 'message', got '{mcp_schema.get('messageField')}'")
-        if mcp_schema.get("serverName") != "Test Support Agent":
-            errors.append(f"serverName should be 'Test Support Agent', got '{mcp_schema.get('serverName')}'")
-        if not mcp_schema.get("inputSchema"):
-            errors.append("inputSchema not populated")
+    endpoint_config = agent.get("endpointConfig", {})
+    mcp_message_field = endpoint_config.get("mcpMessageField")
+    if not mcp_message_field:
+        errors.append("endpointConfig.mcpMessageField not populated")
+    elif mcp_message_field != "message":
+        errors.append(f"mcpMessageField should be 'message', got '{mcp_message_field}'")
 
     capabilities = agent.get("declaredCapabilities")
     if not capabilities:
