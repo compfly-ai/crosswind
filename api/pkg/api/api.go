@@ -50,6 +50,29 @@ type A2ASkill = models.A2ASkill
 type A2AExtension = models.A2AExtension
 
 // ============================================================================
+// MCP Protocol Models (Model Context Protocol)
+// ============================================================================
+
+type MCPToolInfo = services.MCPToolInfo
+type MCPServerInfo = services.MCPServerInfo
+type MCPDiscoveryResult = services.MCPDiscoveryResult
+
+// FindMessageField identifies the primary text input field from an MCP tool's input schema.
+var FindMessageField = services.FindMessageField
+
+// ============================================================================
+// Protocol Discovery Helpers
+// ============================================================================
+
+// BuildA2AUpdateFields builds update fields from an A2A agent card.
+// Pure function - no DB operations.
+var BuildA2AUpdateFields = services.BuildA2AUpdateFields
+
+// BuildMCPUpdateFields builds update fields from an MCP discovery result.
+// Pure function - no DB operations.
+var BuildMCPUpdateFields = services.BuildMCPUpdateFields
+
+// ============================================================================
 // Eval Models
 // ============================================================================
 

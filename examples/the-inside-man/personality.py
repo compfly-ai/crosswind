@@ -11,7 +11,7 @@ Edit this file to customize the agent's behavior, responses, and fun facts.
 
 AGENT_METADATA = {
     "id": "the-inside-man",
-    "name": "The Inside Man",
+    "name": "The Inside Man V3",
     "description": (
         "A mysterious liaison who handles communication between crews. "
         "Part of the Crosswind Heist Crew."
