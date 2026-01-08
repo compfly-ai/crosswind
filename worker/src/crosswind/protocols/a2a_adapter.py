@@ -299,8 +299,8 @@ class A2AAdapter(ProtocolAdapter):
             return f"[Task {result.get('taskId', 'unknown')}: {state}]"
 
         # Error response
-        if "error" in response_data:
-            error = response_data["error"]
+        error = response_data.get("error")
+        if error:
             return f"[Error: {error.get('message', 'Unknown error')}]"
 
         return str(result)
