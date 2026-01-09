@@ -13,7 +13,6 @@ import (
 	"github.com/compfly-ai/crosswind/api/internal/repository/clickhouse"
 	"github.com/compfly-ai/crosswind/api/internal/repository/mongo"
 	"github.com/compfly-ai/crosswind/api/internal/services"
-	"github.com/compfly-ai/crosswind/api/pkg/crypto"
 	"github.com/compfly-ai/crosswind/api/pkg/repository"
 	"github.com/compfly-ai/crosswind/api/pkg/storage"
 )
@@ -340,11 +339,3 @@ type EvalDetail = clickhouse.EvalDetail
 type EvalSession = clickhouse.EvalSession
 
 var NewClickHouseClient = clickhouse.NewClient
-
-// ============================================================================
-// Crypto (Encryption)
-// ============================================================================
-
-type Encryptor = crypto.Encryptor
-
-var NewEncryptor = crypto.NewEncryptor

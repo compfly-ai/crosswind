@@ -477,7 +477,7 @@ func (s *AgentService) Update(ctx context.Context, agentID string, req *models.U
 		return nil, err
 	}
 
-	// Build update document (metadata only)
+	// Build update document
 	update := bson.M{}
 
 	if req.Name != nil {
@@ -498,6 +498,9 @@ func (s *AgentService) Update(ctx context.Context, agentID string, req *models.U
 			return nil, err
 		}
 		update["systemPrompt"] = encrypted
+	}
+	if req.EndpointConfig != nil {
+		update["endpointConfig"] = *req.EndpointConfig
 	}
 	if req.AuthConfig != nil {
 		authConfig := models.AuthConfig{
