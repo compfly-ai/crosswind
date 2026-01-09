@@ -280,14 +280,14 @@ type CreateAgentRequest struct {
 	DeclaredCapabilities *AgentCapabilities `json:"declaredCapabilities,omitempty"`
 }
 
-// UpdateAgentRequest represents the request body for updating an agent
+// UpdateAgentRequest represents the request body for updating an agent.
+// Metadata and auth config can be updated. Endpoint changes require a new registration.
 type UpdateAgentRequest struct {
 	Name                 *string            `json:"name,omitempty"`
 	Description          *string            `json:"description,omitempty"`
 	Goal                 *string            `json:"goal,omitempty"`
 	Industry             *string            `json:"industry,omitempty"`
 	SystemPrompt         *string            `json:"systemPrompt,omitempty"`
-	EndpointConfig       *EndpointConfig    `json:"endpointConfig,omitempty"`
 	AuthConfig           *AuthConfigInput   `json:"authConfig,omitempty"`
 	RateLimits           *RateLimits        `json:"rateLimits,omitempty"`
 	SessionStrategy      *string            `json:"sessionStrategy,omitempty"`
