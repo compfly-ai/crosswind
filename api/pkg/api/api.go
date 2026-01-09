@@ -61,18 +61,6 @@ type MCPDiscoveryResult = services.MCPDiscoveryResult
 var FindMessageField = services.FindMessageField
 
 // ============================================================================
-// Protocol Discovery Helpers
-// ============================================================================
-
-// BuildA2AUpdateFields builds update fields from an A2A agent card.
-// Pure function - no DB operations.
-var BuildA2AUpdateFields = services.BuildA2AUpdateFields
-
-// BuildMCPUpdateFields builds update fields from an MCP discovery result.
-// Pure function - no DB operations.
-var BuildMCPUpdateFields = services.BuildMCPUpdateFields
-
-// ============================================================================
 // Eval Models
 // ============================================================================
 

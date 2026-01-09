@@ -280,7 +280,8 @@ type CreateAgentRequest struct {
 	DeclaredCapabilities *AgentCapabilities `json:"declaredCapabilities,omitempty"`
 }
 
-// UpdateAgentRequest represents the request body for updating an agent
+// UpdateAgentRequest represents the request body for updating an agent.
+// All fields can be updated. Endpoint changes are stored directly without re-discovery.
 type UpdateAgentRequest struct {
 	Name                 *string            `json:"name,omitempty"`
 	Description          *string            `json:"description,omitempty"`

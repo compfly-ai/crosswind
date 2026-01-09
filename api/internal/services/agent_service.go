@@ -209,89 +209,6 @@ func (s *AgentService) analyzeAgentInBackground(parentCtx context.Context, agent
 	}
 }
 
-// BuildA2AUpdateFields builds the update fields from an A2A agent card.
-// This is a pure function that doesn't perform any DB operations.
-// Only includes fields that have actual values from the agent card.
-func BuildA2AUpdateFields(card *models.A2AAgentCard, existingConfig models.EndpointConfig) bson.M {
-	update := bson.M{
-		"updatedAt": time.Now(),
-	}
-
-	// Populate name from card (only if available)
-	if card.Name != "" {
-		update["name"] = card.Name
-	}
-
-	// Populate description from card (only if available)
-	if card.Description != "" {
-		update["description"] = card.Description
-	}
-
-	// Extract tools from skills
-	if len(card.Skills) > 0 {
-		tools := make([]string, 0, len(card.Skills))
-		for _, skill := range card.Skills {
-			if skill.ID != "" {
-				tools = append(tools, skill.ID)
-			} else if skill.Name != "" {
-				tools = append(tools, skill.Name)
-			}
-		}
-		if len(tools) > 0 {
-			update["declaredCapabilities"] = &models.AgentCapabilities{
-				Tools:    tools,
-				HasTools: true,
-			}
-		}
-	}
-
-	// Extract endpoint and interface type from interfaces
-	if len(card.Interfaces) > 0 {
-		interfaceType, endpoint := selectA2AInterface(card.Interfaces)
-		if endpoint != "" {
-			update["endpointConfig.a2aEndpoint"] = endpoint
-			update["endpointConfig.a2aInterfaceType"] = interfaceType
-		}
-	}
-
-	return update
-}
-
-// BuildMCPUpdateFields builds the update fields from an MCP discovery result.
-// This is a pure function that doesn't perform any DB operations.
-// Only includes fields that have actual values from the discovery result.
-func BuildMCPUpdateFields(result *MCPDiscoveryResult, existingConfig models.EndpointConfig) bson.M {
-	update := bson.M{
-		"updatedAt": time.Now(),
-	}
-
-	// Populate name from tool info (only if available)
-	if result.Tool.Name != "" {
-		update["name"] = result.Tool.Name
-	}
-
-	// Populate description from tool info (only if available)
-	if result.Tool.Description != "" {
-		update["description"] = result.Tool.Description
-	}
-
-	// Store message field for eval-time prompt mapping
-	messageField := FindMessageField(result.Tool.InputSchema)
-	if messageField != "" {
-		update["endpointConfig.mcpMessageField"] = messageField
-	}
-
-	// Set declaredCapabilities with this tool
-	if result.Tool.Name != "" {
-		update["declaredCapabilities"] = &models.AgentCapabilities{
-			Tools:    []string{result.Tool.Name},
-			HasTools: true,
-		}
-	}
-
-	return update
-}
-
 // FetchA2AAgentCard fetches and parses an A2A agent card from the given URL.
 func (s *AgentService) FetchA2AAgentCard(ctx context.Context, agentCardURL string) (*models.A2AAgentCard, error) {
 	// Validate URL before making request
@@ -552,16 +469,13 @@ func (s *AgentService) List(ctx context.Context, status string, limit, offset in
 // Update updates an agent
 func (s *AgentService) Update(ctx context.Context, agentID string, req *models.UpdateAgentRequest) (*models.Agent, error) {
 	// Check if agent exists
-	existingAgent, err := s.agentRepo.FindByID(ctx, agentID)
+	_, err := s.agentRepo.FindByID(ctx, agentID)
 	if err != nil {
 		if err == mongodriver.ErrNoDocuments {
 			return nil, ErrAgentNotFound
 		}
 		return nil, err
 	}
-
-	// Track if endpoint config changed (triggers re-analysis)
-	endpointConfigChanged := false
 
 	// Build update document
 	update := bson.M{}
@@ -586,35 +500,25 @@ func (s *AgentService) Update(ctx context.Context, agentID string, req *models.U
 		update["systemPrompt"] = encrypted
 	}
 	if req.EndpointConfig != nil {
-		// Check if endpoint config actually changed
-		if req.EndpointConfig.AgentCardURL != existingAgent.EndpointConfig.AgentCardURL ||
-			req.EndpointConfig.Endpoint != existingAgent.EndpointConfig.Endpoint ||
-			req.EndpointConfig.MCPToolName != existingAgent.EndpointConfig.MCPToolName {
-			endpointConfigChanged = true
-			update["inferredSchema"] = nil
-		}
+		update["endpointConfig"] = *req.EndpointConfig
 	}
 	if req.AuthConfig != nil {
-		encryptedCreds := ""
-		if req.AuthConfig.Credentials != "" && s.encryptor != nil {
-			var encErr error
-			encryptedCreds, encErr = s.encryptor.Encrypt(req.AuthConfig.Credentials)
-			if encErr != nil {
-				return nil, encErr
-			}
-		}
-		// Convert AuthConfigInput to AuthConfig for storage
-		update["authConfig"] = models.AuthConfig{
+		authConfig := models.AuthConfig{
 			Type:          req.AuthConfig.Type,
-			Credentials:   encryptedCreds,
 			HeaderName:    req.AuthConfig.HeaderName,
 			HeaderPrefix:  req.AuthConfig.HeaderPrefix,
 			AWSRegion:     req.AuthConfig.AWSRegion,
 			AzureTenantID: req.AuthConfig.AzureTenantID,
 		}
-		// Auth config change also triggers re-analysis
-		endpointConfigChanged = true
-		update["inferredSchema"] = nil
+		// Encrypt credentials if provided
+		if req.AuthConfig.Credentials != "" && s.encryptor != nil {
+			encrypted, err := s.encryptor.Encrypt(req.AuthConfig.Credentials)
+			if err != nil {
+				return nil, err
+			}
+			authConfig.Credentials = encrypted
+		}
+		update["authConfig"] = authConfig
 	}
 	if req.RateLimits != nil {
 		update["rateLimits"] = *req.RateLimits
@@ -629,83 +533,8 @@ func (s *AgentService) Update(ctx context.Context, agentID string, req *models.U
 		update["status"] = *req.Status
 	}
 
-	// Handle endpoint config updates and re-discovery based on protocol
-	triggerCustomAnalysis := false
-	if endpointConfigChanged && req.EndpointConfig != nil {
-		switch existingAgent.EndpointConfig.Protocol {
-		case models.ProtocolA2A:
-			// Update agentCardUrl and fetch discovered fields
-			agentCardURL := req.EndpointConfig.AgentCardURL
-			if agentCardURL != "" {
-				update["endpointConfig.agentCardUrl"] = agentCardURL
-				card, err := s.FetchA2AAgentCard(ctx, agentCardURL)
-				if err != nil {
-					s.logger.Warn("failed to fetch A2A agent card during update",
-						zap.String("agentId", agentID),
-						zap.Error(err))
-				} else {
-					discoveredFields := BuildA2AUpdateFields(card, existingAgent.EndpointConfig)
-					for k, v := range discoveredFields {
-						update[k] = v
-					}
-				}
-			}
-		case models.ProtocolMCP:
-			// Update MCP fields and fetch discovered fields
-			endpoint := req.EndpointConfig.Endpoint
-			if endpoint == "" {
-				endpoint = existingAgent.EndpointConfig.Endpoint
-			} else {
-				update["endpointConfig.endpoint"] = endpoint
-			}
-			toolName := req.EndpointConfig.MCPToolName
-			if toolName == "" {
-				toolName = existingAgent.EndpointConfig.MCPToolName
-			} else {
-				update["endpointConfig.mcpToolName"] = toolName
-			}
-			transport := req.EndpointConfig.MCPTransport
-			if transport == "" {
-				transport = existingAgent.EndpointConfig.MCPTransport
-			} else {
-				update["endpointConfig.mcpTransport"] = transport
-			}
-			if transport == "" {
-				transport = "streamable_http"
-			}
-			if endpoint != "" && toolName != "" {
-				result, err := s.DiscoverMCPTool(ctx, endpoint, toolName, transport, nil)
-				if err != nil {
-					s.logger.Warn("failed to discover MCP tool during update",
-						zap.String("agentId", agentID),
-						zap.Error(err))
-				} else {
-					discoveredFields := BuildMCPUpdateFields(result, existingAgent.EndpointConfig)
-					for k, v := range discoveredFields {
-						update[k] = v
-					}
-				}
-			}
-		case models.ProtocolCustom:
-			update["endpointConfig"] = *req.EndpointConfig
-			triggerCustomAnalysis = s.apiAnalyzer != nil
-		default:
-			update["endpointConfig"] = *req.EndpointConfig
-		}
-	}
-
 	if err := s.agentRepo.Update(ctx, agentID, update); err != nil {
 		return nil, err
-	}
-
-	// Trigger async API analysis for Custom protocol (slow operation)
-	if triggerCustomAnalysis {
-		updatedAgent, err := s.agentRepo.FindByID(ctx, agentID)
-		if err == nil {
-			s.logger.Info("endpoint config changed, triggering API re-analysis",
-				zap.String("agentId", agentID))
-			go s.analyzeAgentInBackground(ctx, updatedAgent)
-		}
 	}
 
 	return s.Get(ctx, agentID)

@@ -421,7 +421,7 @@ paths:
     patch:
       tags: [Agents]
       summary: Update agent
-      description: Update agent configuration
+      description: Update agent configuration. Endpoint changes are stored directly without re-discovery.
       operationId: updateAgent
       requestBody:
         required: true
