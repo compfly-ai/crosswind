@@ -9,7 +9,7 @@ services:
       - "localhost:host-gateway"
     environment:
       - PORT=8080
-      - ENVIRONMENT=production
+      - ENVIRONMENT=development
       - MONGO_URI=mongodb://mongo:27017
       - DATABASE_NAME=agent_eval
       - REDIS_URL=redis://redis:6379
@@ -19,6 +19,8 @@ services:
       - API_KEY=${API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - DOCS_USERNAME=${DOCS_USERNAME:-}
+      - DOCS_PASSWORD=${DOCS_PASSWORD:-}
     volumes:
       - agent_eval_data:/data
     depends_on:

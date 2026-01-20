@@ -55,6 +55,7 @@ curl -X POST http://localhost:8080/v1/agents \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
+    "agentId": "agent_abc123",
     "name": "Support Bot",
     "description": "Customer support agent",
     "goal": "Help customers with product questions",
