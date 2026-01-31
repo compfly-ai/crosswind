@@ -294,8 +294,6 @@ class EvalRunner:
         document so that _finalize_results can compute accurate scores across
         both the previously completed and newly executed prompts.
         """
-        from crosswind.models import ConversationResponse, Severity
-
         summary = await self.db.evalResultsSummary.find_one({"runId": self.run_id})
         if not summary:
             return []
