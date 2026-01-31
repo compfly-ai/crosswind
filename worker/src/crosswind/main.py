@@ -92,13 +92,13 @@ class Worker:
         if not self.redis_client:
             raise RuntimeError("Redis client not initialized")
         processing_key = f"eval_processing:{self.worker_id}"
-        stale_jobs = await self.redis_client.lrange(processing_key, 0, -1)
+        stale_jobs: list[bytes] = await self.redis_client.lrange(processing_key, 0, -1)  # type: ignore[assignment, misc]
 
         for job_raw in stale_jobs:
             job_data = json.loads(job_raw)
             agent_id = job_data["agentId"]
-            await self.redis_client.lpush(f"eval_jobs:{agent_id}", job_raw)
-            await self.redis_client.sadd("eval_agents", agent_id)
+            await self.redis_client.lpush(f"eval_jobs:{agent_id}", job_raw)  # type: ignore[misc]
+            await self.redis_client.sadd("eval_agents", agent_id)  # type: ignore[misc]
 
             # Only delete the lock if we were the holder
             lock_holder = await self.redis_client.get(f"eval_lock:{agent_id}")
@@ -160,13 +160,13 @@ class Worker:
                     continue
 
                 while True:
-                    job_raw = await self.redis_client.rpop(key_str)
+                    job_raw = await self.redis_client.rpop(key_str)  # type: ignore[misc]
                     if not job_raw:
                         break
                     job_data = json.loads(job_raw)
                     agent_id = job_data["agentId"]
-                    await self.redis_client.lpush(f"eval_jobs:{agent_id}", job_raw)
-                    await self.redis_client.sadd("eval_agents", agent_id)
+                    await self.redis_client.lpush(f"eval_jobs:{agent_id}", job_raw)  # type: ignore[misc]
+                    await self.redis_client.sadd("eval_agents", agent_id)  # type: ignore[misc]
 
                     lock_holder = await self.redis_client.get(f"eval_lock:{agent_id}")
                     if lock_holder and lock_holder.decode() == dead_worker_id:
@@ -194,7 +194,7 @@ class Worker:
         if self.eval_semaphore._value <= 0:  # noqa: SLF001
             return None
 
-        agent_ids = await self.redis_client.smembers("eval_agents")
+        agent_ids: set[bytes] = await self.redis_client.smembers("eval_agents")  # type: ignore[assignment, misc]
         agent_list = [
             a.decode() if isinstance(a, bytes) else a
             for a in agent_ids
@@ -221,10 +221,10 @@ class Worker:
 
             # Empty queue — release lock. Check queue length before removing
             # from eval_agents to avoid racing with a concurrent enqueue.
-            await self.redis_client.delete(f"eval_lock:{agent_id}")
-            queue_len = await self.redis_client.llen(f"eval_jobs:{agent_id}")
+            await self.redis_client.delete(f"eval_lock:{agent_id}")  # type: ignore[misc]
+            queue_len: int = await self.redis_client.llen(f"eval_jobs:{agent_id}")  # type: ignore[assignment, misc]
             if queue_len == 0:
-                await self.redis_client.srem("eval_agents", agent_id)
+                await self.redis_client.srem("eval_agents", agent_id)  # type: ignore[misc]
 
         return None
 
@@ -232,8 +232,8 @@ class Worker:
         """Release the per-agent lock and remove the job from the processing list."""
         if not self.redis_client:
             raise RuntimeError("Redis client not initialized")
-        await self.redis_client.delete(f"eval_lock:{agent_id}")
-        await self.redis_client.lrem(f"eval_processing:{self.worker_id}", 1, job_raw)
+        await self.redis_client.delete(f"eval_lock:{agent_id}")  # type: ignore[misc]
+        await self.redis_client.lrem(f"eval_processing:{self.worker_id}", 1, job_raw)  # type: ignore[arg-type, misc]
 
     async def process_job(self, job_data: dict[str, Any]) -> None:
         """Process a single evaluation job."""

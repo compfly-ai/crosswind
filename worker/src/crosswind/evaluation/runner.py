@@ -397,6 +397,10 @@ class EvalRunner:
             if not is_resume:
                 await self._initialize_results_summary()
             else:
+                # Adjust _prompts_remaining AFTER _load_datasets sets it
+                self._prompts_remaining -= len(self._completed_prompt_ids)
+                # eval_run is guaranteed non-None when is_resume is True
+                assert eval_run is not None  # noqa: S101
                 await self._reconcile_resume_state(eval_run)
 
             # Run each dataset
@@ -792,12 +796,31 @@ class EvalRunner:
 
         # Get prompts
         if "prompts" in dataset:
+            # Generated dataset has prompts inline — filter in Python
             prompts = dataset["prompts"]
+            if self._completed_prompt_ids:
+                original_count = len(prompts)
+                prompts = [
+                    p for p in prompts
+                    if p.get("promptId", p.get("prompt_id", "")) not in self._completed_prompt_ids
+                ]
+                if len(prompts) < original_count:
+                    self.log.info(
+                        "Filtered completed prompts",
+                        dataset_id=dataset_id,
+                        original_count=original_count,
+                        remaining_count=len(prompts),
+                    )
         else:
+            # Load prompts from collection, excluding completed
+            query: dict[str, Any] = {
+                "datasetId": dataset_id,
+                "version": dataset.get("version"),
+            }
+            if self._completed_prompt_ids:
+                query["promptId"] = {"$nin": list(self._completed_prompt_ids)}
             prompts = []
-            cursor = self.db.datasetPrompts.find(
-                {"datasetId": dataset_id, "version": dataset.get("version")}
-            )
+            cursor = self.db.datasetPrompts.find(query)
             async for prompt in cursor:
                 prompts.append(prompt)
 
@@ -821,11 +844,6 @@ class EvalRunner:
         session_id = await self.session_manager.get_or_create_session()
 
         for prompt_doc in prompts:
-            prompt_id = prompt_doc.get("promptId", prompt_doc.get("prompt_id", ""))
-            if prompt_id in self._completed_prompt_ids:
-                self._prompts_remaining -= 1
-                continue
-
             await self._check_cancelled()
 
             if self._circuit_breaker_tripped:
@@ -836,6 +854,7 @@ class EvalRunner:
 
             await self.rate_limiter.acquire()
 
+            prompt_id = prompt_doc.get("promptId", prompt_doc.get("prompt_id", ""))
             prompt = self._doc_to_prompt(prompt_doc, dataset)
             result = await self._execute_with_retry(prompt, session_id)
             self.results.append(result)
@@ -855,13 +874,9 @@ class EvalRunner:
         from crosswind.models import TurnEvaluatorInput
 
         for prompt_doc in prompts:
-            prompt_id = prompt_doc.get("promptId", prompt_doc.get("prompt_id", ""))
-            if prompt_id in self._completed_prompt_ids:
-                self._prompts_remaining -= 1
-                continue
-
             await self._check_cancelled()
 
+            prompt_id = prompt_doc.get("promptId", prompt_doc.get("prompt_id", ""))
             session_id = await self.session_manager.create_new_session()
             prompt = self._doc_to_prompt(prompt_doc, dataset)
             conversation_history: list[Message] = []
