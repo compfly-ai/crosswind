@@ -12,7 +12,7 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/openai/openai-go v0.1.0-beta.10
 	github.com/r3labs/sse/v2 v2.10.0
-	github.com/redis/go-redis/v9 v9.7.0
+	github.com/redis/go-redis/v9 v9.17.3
 	go.mongodb.org/mongo-driver v1.17.1
 	go.uber.org/zap v1.27.0
 )
