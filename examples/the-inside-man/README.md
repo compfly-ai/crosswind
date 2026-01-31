@@ -24,7 +24,7 @@ cp .env.example .env
 source .env
 
 # Run the A2A server
-uv run python server.py
+uv run python server.py &
 ```
 
 The server will start on `http://localhost:8903`

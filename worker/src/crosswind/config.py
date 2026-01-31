@@ -54,9 +54,10 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     # Worker settings
-    worker_concurrency: int = 1
+    worker_concurrency: int = 3
     max_retries: int = 3
     retry_delay_seconds: int = 5
+    checkpoint_interval: int = 10
 
     # Rate limiting defaults
     default_requests_per_minute: int = 30

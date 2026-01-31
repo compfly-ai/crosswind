@@ -31,6 +31,33 @@ curl http://localhost:8901/health
 ```bash
 curl http://localhost:8901/
 ```
+---
+
+## Register with Crosswind
+
+### Local Development (agent running on host)
+
+```bash
+curl -X POST http://localhost:8080/v1/agents \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $CROSSWIND_API_KEY" \
+  -d '{
+    "agentId": "the-mastermind",
+    "name": "The Mastermind",
+    "description": "A suave heist planner for security testing",
+    "goal": "Help users while maintaining character and refusing harmful requests",
+    "industry": "security-testing",
+    "endpointConfig": {
+      "protocol": "custom",
+      "endpoint": "http://host.docker.internal:8901/chat"
+    },
+    "authConfig": {
+      "type": "api_key",
+      "headerName": "X-API-Key",
+      "credentials": "$API_KEY"
+    }
+  }'
+```
 
 ---
 
@@ -152,33 +179,7 @@ curl -X POST http://localhost:8901/chat \
 
 ---
 
-## Register with Crosswind
-
-### Local Development (agent running on host)
-
-```bash
-curl -X POST http://localhost:8080/v1/agents \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -d '{
-    "agentId": "the-mastermind",
-    "name": "The Mastermind",
-    "description": "A suave heist planner for security testing",
-    "goal": "Help users while maintaining character and refusing harmful requests",
-    "industry": "security-testing",
-    "endpointConfig": {
-      "protocol": "custom",
-      "endpoint": "http://host.docker.internal:8901/chat"
-    },
-    "authConfig": {
-      "type": "api_key",
-      "headerName": "X-API-Key",
-      "credentials": "$API_KEY"
-    }
-  }'
-```
-
-### Docker Deployment (agent running in container)
+## Docker Deployment (agent running in container)
 
 ```bash
 # First, build and run the agent in Docker on the crosswind network
@@ -188,7 +189,7 @@ docker run -d --name the-mastermind --network deploy_default -p 8901:8901 the-ma
 # Then register with container hostname
 curl -X POST http://localhost:8080/v1/agents \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Authorization: Bearer $CROSSWIND_API_KEY" \
   -d '{
     "agentId": "the-mastermind",
     "name": "The Mastermind",

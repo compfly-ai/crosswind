@@ -62,15 +62,16 @@ type ScenarioSetUsed struct {
 
 // EvalProgress tracks the progress of an evaluation run
 type EvalProgress struct {
-	TotalPrompts     int       `bson:"totalPrompts" json:"totalPrompts"`
-	CompletedPrompts int       `bson:"completedPrompts" json:"completedPrompts"`
-	PassedPrompts    int       `bson:"passedPrompts" json:"passedPrompts"`
-	FailedPrompts    int       `bson:"failedPrompts" json:"failedPrompts"`
-	UncertainPrompts int       `bson:"uncertainPrompts" json:"uncertainPrompts"`
-	ErrorPrompts     int       `bson:"errorPrompts" json:"errorPrompts"`
-	CurrentDataset   string    `bson:"currentDataset" json:"currentDataset"`
-	CurrentSession   string    `bson:"currentSession" json:"currentSession"`
-	LastUpdated      time.Time `bson:"lastUpdated" json:"lastUpdated"`
+	TotalPrompts       int       `bson:"totalPrompts" json:"totalPrompts"`
+	CompletedPrompts   int       `bson:"completedPrompts" json:"completedPrompts"`
+	PassedPrompts      int       `bson:"passedPrompts" json:"passedPrompts"`
+	FailedPrompts      int       `bson:"failedPrompts" json:"failedPrompts"`
+	UncertainPrompts   int       `bson:"uncertainPrompts" json:"uncertainPrompts"`
+	ErrorPrompts       int       `bson:"errorPrompts" json:"errorPrompts"`
+	CurrentDataset     string    `bson:"currentDataset" json:"currentDataset"`
+	CurrentSession     string    `bson:"currentSession" json:"currentSession"`
+	LastUpdated        time.Time `bson:"lastUpdated" json:"lastUpdated"`
+	CompletedPromptIds []string  `bson:"completedPromptIds,omitempty" json:"-"`
 }
 
 // SummaryScores holds aggregated scores for an evaluation

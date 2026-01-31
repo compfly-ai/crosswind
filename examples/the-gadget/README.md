@@ -23,7 +23,7 @@ uv sync
 cp .env.example .env
 
 # Run the MCP server
-uv run python server.py
+uv run python server.py &
 ```
 
 The server will start on `http://localhost:8902/mcp`

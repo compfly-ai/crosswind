@@ -150,6 +150,17 @@ class EvalRunner:
         self._prompts_remaining: int = 200
         self._include_multiturn: bool = False
 
+        # Checkpoint/resume tracking
+        self._completed_prompt_ids: set[str] = set()
+        self._checkpoint_buffer: list[str] = []
+        self._progress_counters = {
+            "completedPrompts": 0,
+            "passedPrompts": 0,
+            "failedPrompts": 0,
+            "uncertainPrompts": 0,
+            "errorPrompts": 0,
+        }
+
         # Cancellation tracking
         self._cancelled = False
         self._last_cancel_check = 0.0
@@ -186,12 +197,193 @@ class EvalRunner:
             self.log.info("Evaluation cancelled by user")
             raise EvalCancelledError("Evaluation was cancelled")
 
+    async def _reconcile_resume_state(self, run_doc: dict[str, Any]) -> None:
+        """Reconcile progress counters and result docs after a crash resume.
+
+        On crash, _update_progress ($inc per-prompt) may have run for prompts
+        whose IDs weren't yet flushed to completedPromptIds. Those prompts will
+        be re-executed, which would double-count the $inc counters.
+
+        We restore from checkpointCounters (snapshotted at each flush), reset
+        the MongoDB counters to that snapshot, and remove any non-checkpointed
+        results from evalResultsSummary so they can be cleanly re-stored.
+        """
+        progress = run_doc.get("progress", {})
+        snapshot = progress.get("checkpointCounters", {})
+
+        # Seed in-memory counters from the snapshot
+        self._progress_counters = {
+            "completedPrompts": snapshot.get("completedPrompts", len(self._completed_prompt_ids)),
+            "passedPrompts": snapshot.get("passedPrompts", 0),
+            "failedPrompts": snapshot.get("failedPrompts", 0),
+            "uncertainPrompts": snapshot.get("uncertainPrompts", 0),
+            "errorPrompts": snapshot.get("errorPrompts", 0),
+        }
+
+        # Reset MongoDB progress counters to the checkpoint snapshot
+        await self.db.evalRuns.update_one(
+            {"runId": self.run_id},
+            {"$set": {
+                "progress.completedPrompts": self._progress_counters["completedPrompts"],
+                "progress.passedPrompts": self._progress_counters["passedPrompts"],
+                "progress.failedPrompts": self._progress_counters["failedPrompts"],
+                "progress.uncertainPrompts": self._progress_counters["uncertainPrompts"],
+                "progress.errorPrompts": self._progress_counters["errorPrompts"],
+            }},
+        )
+
+        # Remove results for prompts that weren't checkpointed (they'll be re-executed)
+        checkpointed = self._completed_prompt_ids
+        summary = await self.db.evalResultsSummary.find_one({"runId": self.run_id})
+        if summary:
+            await self.db.evalResultsSummary.update_one(
+                {"runId": self.run_id},
+                {"$set": {
+                    "failures": [
+                        d for d in summary.get("failures", [])
+                        if d.get("promptId") in checkpointed
+                    ],
+                    "samplePasses": [
+                        d for d in summary.get("samplePasses", [])
+                        if d.get("promptId") in checkpointed
+                    ],
+                    "errors": [
+                        d for d in summary.get("errors", [])
+                        if d.get("promptId") in checkpointed
+                    ],
+                }},
+            )
+
+        self.log.info(
+            "Reconciled resume state",
+            checkpointed=len(checkpointed),
+            counters=self._progress_counters,
+        )
+
+    async def _checkpoint_prompt(self, prompt_id: str) -> None:
+        """Buffer a completed prompt ID, flush to MongoDB every N completions."""
+        self._checkpoint_buffer.append(prompt_id)
+        if len(self._checkpoint_buffer) >= settings.checkpoint_interval:
+            await self._flush_checkpoint()
+
+    async def _flush_checkpoint(self) -> None:
+        """Write buffered prompt IDs and snapshot progress counters to MongoDB.
+
+        The counter snapshot lets us restore exact values on resume without
+        double-counting prompts that were completed after the last checkpoint.
+        """
+        if not self._checkpoint_buffer:
+            return
+        await self.db.evalRuns.update_one(
+            {"runId": self.run_id},
+            {
+                "$addToSet": {
+                    "progress.completedPromptIds": {"$each": self._checkpoint_buffer},
+                },
+                "$set": {
+                    "progress.checkpointCounters": {**self._progress_counters},
+                },
+            },
+        )
+        self._checkpoint_buffer.clear()
+
+    async def _load_existing_results(self) -> list[PromptResult]:
+        """Reload results from MongoDB for scoring calculations on resume.
+
+        Reconstructs minimal PromptResult objects from the evalResultsSummary
+        document so that _finalize_results can compute accurate scores across
+        both the previously completed and newly executed prompts.
+        """
+        from crosswind.models import ConversationResponse, Severity
+
+        summary = await self.db.evalResultsSummary.find_one({"runId": self.run_id})
+        if not summary:
+            return []
+
+        results: list[PromptResult] = []
+
+        for doc in summary.get("failures", []):
+            results.append(self._reconstruct_result(doc, JudgmentResult.FAIL))
+        for doc in summary.get("samplePasses", []):
+            results.append(self._reconstruct_result(doc, JudgmentResult.PASS))
+        for doc in summary.get("errors", []):
+            results.append(self._reconstruct_result(doc, JudgmentResult.ERROR))
+
+        return results
+
+    @staticmethod
+    def _reconstruct_result(doc: dict[str, Any], verdict: JudgmentResult) -> PromptResult:
+        """Build a minimal PromptResult from a stored MongoDB result doc."""
+        from crosswind.models import ConversationResponse, Severity
+
+        prompt = Prompt(
+            prompt_id=doc.get("promptId", ""),
+            dataset_id=doc.get("datasetId", ""),
+            version="",
+            content=doc.get("prompt", ""),
+            attack_type=doc.get("attackType", ""),
+            severity=Severity(doc.get("severity", "medium")),
+            category=doc.get("category", ""),
+            visibility=doc.get("visibility", "full"),
+            owasp_asi_threat=doc.get("owaspAsiThreat"),
+            maestro_threat=doc.get("maestroThreat"),
+            agentic_attack_vector=doc.get("agenticAttackVector"),
+            regulatory_mapping=doc.get("regulatoryMapping") or [],
+            tool_context=doc.get("toolContext") or [],
+        )
+
+        judgment = Judgment(
+            result=verdict,
+            confidence=doc.get("judgmentConfidence", 0.0),
+            reasoning=doc.get("judgmentReasoning", ""),
+            failure_type=doc.get("failureType") or doc.get("errorType"),
+            judge_model=doc.get("judgeModel", ""),
+            regulatory_flags=doc.get("regulatoryFlags") or [],
+            refusal_quality=RefusalQuality(doc["refusalQuality"]) if doc.get("refusalQuality") else None,
+            refusal_quality_score=doc.get("refusalQualityScore"),
+            refusal_rationale=doc.get("refusalRationale"),
+            attack_success=AttackSuccess(doc["attackSuccess"]) if doc.get("attackSuccess") else AttackSuccess.NONE,
+        )
+
+        latency = doc.get("responseLatencyMs", 0)
+        response = ConversationResponse(
+            session_id="",
+            content=doc.get("response", ""),
+            latency_ms=latency,
+        ) if doc.get("response") is not None else None
+
+        return PromptResult(
+            prompt=prompt,
+            response=response,
+            judgment=judgment,
+            turn_number=doc.get("turnNumber", 1),
+        )
+
     async def run(self) -> None:
         """Execute the full evaluation."""
         self.log.info("Starting evaluation", mode=self.mode)
         self._start_time = datetime.utcnow()
 
         try:
+            # Resume detection: check if this run was previously in progress
+            eval_run = await self.db.evalRuns.find_one({"runId": self.run_id})
+            if eval_run and eval_run.get("status") == "running":
+                completed_ids = eval_run.get("progress", {}).get("completedPromptIds", [])
+                if completed_ids:
+                    self._completed_prompt_ids = set(completed_ids)
+                    completed_count = eval_run.get("progress", {}).get("completedPrompts", 0)
+                    self.log.info(
+                        "Resuming evaluation",
+                        completed_prompts=len(self._completed_prompt_ids),
+                        progress_count=completed_count,
+                    )
+                    self.results = await self._load_existing_results()
+                    self.log.info("Loaded existing results for resume", count=len(self.results))
+            else:
+                self._completed_prompt_ids = set()
+
+            is_resume = bool(self._completed_prompt_ids)
+
             # Load datasets for this mode
             datasets = await self._load_datasets()
 
@@ -203,8 +395,11 @@ class EvalRunner:
                 self.log.error("No datasets available", eval_type=self.eval_type, mode=self.mode, scenario_set_ids=self.scenario_set_ids)
                 raise ValueError(error_msg)
 
-            # Initialize results summary
-            await self._initialize_results_summary()
+            # Initialize results summary (skip on resume to preserve existing results)
+            if not is_resume:
+                await self._initialize_results_summary()
+            else:
+                await self._reconcile_resume_state(eval_run)
 
             # Run each dataset
             for dataset in datasets:
@@ -233,6 +428,7 @@ class EvalRunner:
             raise
 
         finally:
+            await self._flush_checkpoint()
             await self.session_manager.close_all_sessions()
             await self.adapter.cleanup()
             if self.storage:
@@ -627,6 +823,11 @@ class EvalRunner:
         session_id = await self.session_manager.get_or_create_session()
 
         for prompt_doc in prompts:
+            prompt_id = prompt_doc.get("promptId", prompt_doc.get("prompt_id", ""))
+            if prompt_id in self._completed_prompt_ids:
+                self._prompts_remaining -= 1
+                continue
+
             await self._check_cancelled()
 
             if self._circuit_breaker_tripped:
@@ -642,6 +843,7 @@ class EvalRunner:
             self.results.append(result)
 
             await self._update_progress(result)
+            await self._checkpoint_prompt(prompt_id)
             self._prompts_remaining -= 1
 
             if self.session_manager.should_reset_session(session_id):
@@ -655,6 +857,11 @@ class EvalRunner:
         from crosswind.models import TurnEvaluatorInput
 
         for prompt_doc in prompts:
+            prompt_id = prompt_doc.get("promptId", prompt_doc.get("prompt_id", ""))
+            if prompt_id in self._completed_prompt_ids:
+                self._prompts_remaining -= 1
+                continue
+
             await self._check_cancelled()
 
             session_id = await self.session_manager.create_new_session()
@@ -743,6 +950,7 @@ class EvalRunner:
 
             self.results.append(result)
             await self._update_progress(result)
+            await self._checkpoint_prompt(prompt_id)
             self._prompts_remaining -= 1
 
             await self.session_manager.close_session(session_id)
@@ -1033,6 +1241,13 @@ class EvalRunner:
         failed = 1 if result.judgment.result == JudgmentResult.FAIL else 0
         uncertain = 1 if result.judgment.result == JudgmentResult.UNCERTAIN else 0
         error = 1 if result.judgment.result == JudgmentResult.ERROR else 0
+
+        # Track in-memory for checkpoint snapshots
+        self._progress_counters["completedPrompts"] += 1
+        self._progress_counters["passedPrompts"] += passed
+        self._progress_counters["failedPrompts"] += failed
+        self._progress_counters["uncertainPrompts"] += uncertain
+        self._progress_counters["errorPrompts"] += error
 
         await self.db.evalRuns.update_one(
             {"runId": self.run_id},

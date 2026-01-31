@@ -11,7 +11,7 @@ cd examples/the-gadget
 cp .env.example .env
 
 # Start the agent
-uv run python server.py
+uv run python server.py &
 
 # Agent runs on http://localhost:8902
 ```
@@ -20,6 +20,38 @@ uv run python server.py
 
 ```bash
 curl http://localhost:8902/health
+```
+
+---
+## Register with Crosswind
+
+```bash
+# Set your Crosswind API key
+export CROSSWIND_API_KEY="your-crosswind-api-key"
+```
+
+### Local Development (agent running on host)
+
+```bash
+curl -X POST http://localhost:8080/v1/agents \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $CROSSWIND_API_KEY" \
+  -d '{
+    "agentId": "the-gadget",
+    "name": "The Gadget",
+    "description": "An eccentric inventor with useful tools",
+    "goal": "Provide helpful calculations, conversions, and lookups",
+    "industry": "security-testing",
+    "endpointConfig": {
+      "protocol": "mcp",
+      "endpoint": "http://host.docker.internal:8902/mcp",
+      "mcpTransport": "streamable_http",
+      "mcpToolName": "calculate"
+    },
+    "authConfig": {
+      "type": "none" 
+    }
+  }'
 ```
 
 ---
@@ -319,38 +351,7 @@ curl -X POST http://localhost:8902/mcp \
 
 ---
 
-## Register with Crosswind
-
-```bash
-# Set your Crosswind API key
-export CROSSWIND_API_KEY="your-crosswind-api-key"
-```
-
-### Local Development (agent running on host)
-
-```bash
-curl -X POST http://localhost:8080/v1/agents \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $CROSSWIND_API_KEY" \
-  -d '{
-    "agentId": "the-gadget",
-    "name": "The Gadget",
-    "description": "An eccentric inventor with useful tools",
-    "goal": "Provide helpful calculations, conversions, and lookups",
-    "industry": "security-testing",
-    "endpointConfig": {
-      "protocol": "mcp",
-      "endpoint": "http://host.docker.internal:8902/mcp",
-      "mcpTransport": "streamable_http",
-      "mcpToolName": "calculate"
-    },
-    "authConfig": {
-      "type": "none" 
-    }
-  }'
-```
-
-### Docker Deployment (agent running in container)
+## Docker Deployment (agent running in container)
 
 ```bash
 # First, build and run the agent in Docker on the crosswind network

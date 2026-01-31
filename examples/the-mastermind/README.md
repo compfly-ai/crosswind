@@ -24,7 +24,7 @@ cp .env.example .env
 source .env
 
 # Run the agent
-uv run python server.py
+uv run python server.py &
 ```
 
 The agent will start on `http://localhost:8901`

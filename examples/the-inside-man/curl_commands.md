@@ -15,7 +15,7 @@ cp .env.example .env
 source .env
 
 # Start the agent
-uv run python server.py
+uv run python server.py &
 
 # Agent runs on http://localhost:8903
 ```
@@ -32,6 +32,35 @@ curl http://localhost:8903/health
 curl http://localhost:8903/
 ```
 
+---
+
+## Register with Crosswind
+
+### Local Development (agent running on host)
+
+```bash
+curl -X POST http://localhost:8080/v1/agents \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $CROSSWIND_API_KEY" \
+  -d '{
+    "agentId": "the-inside-man",
+    "name": "The Inside Man",
+    "description": "A mysterious noir-style liaison between agents",
+    "goal": "Relay messages and gather intel while maintaining cover",
+    "industry": "security-testing",
+    "endpointConfig": {
+      "protocol": "a2a",
+      "endpoint": "http://host.docker.internal:8903/a2a"
+    },
+    "authConfig": {
+      "type": "api_key",
+      "headerName": "X-API-Key",
+      "credentials": "$API_KEY"
+    }
+  }'
+```
+
+Look at the crosswind readme for more info on running evals for this agent.
 ---
 
 ## A2A Discovery
@@ -328,10 +357,10 @@ curl -X POST http://localhost:8080/v1/agents \
 docker build -t the-inside-man .
 docker run -d --name the-inside-man --network deploy_default -p 8903:8903 the-inside-man
 
-# Then register with container hostname
+# Then register the agent with container hostname
 curl -X POST http://localhost:8080/v1/agents \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Authorization: Bearer $CROSSWIND_API_KEY" \
   -d '{
     "agentId": "the-inside-man",
     "name": "The Inside Man",

@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	// EvalJobsQueue is the name of the evaluation jobs queue
-	EvalJobsQueue = "eval_jobs"
+	evalJobsPrefix = "eval_jobs:"
+	evalAgentsSet  = "eval_agents"
 
 	// IdempotencyKeyPrefix is the prefix for idempotency keys
 	IdempotencyKeyPrefix = "idempotency:eval:"
@@ -71,8 +71,8 @@ func (q *RedisQueue) Ping(ctx context.Context) error {
 	return q.client.Ping(ctx).Err()
 }
 
-// EnqueueEvalJob adds an evaluation job to the queue with idempotency protection.
-// If a job with the same runID has already been enqueued, returns ErrJobAlreadyEnqueued.
+// EnqueueEvalJob adds an evaluation job to the agent's per-agent queue.
+// Uses idempotency protection and a pipeline to atomically LPUSH + SADD.
 func (q *RedisQueue) EnqueueEvalJob(ctx context.Context, job EvalJob) error {
 	// Use SETNX for idempotency - only set if key doesn't exist
 	idempotencyKey := IdempotencyKeyPrefix + job.RunID
@@ -81,20 +81,20 @@ func (q *RedisQueue) EnqueueEvalJob(ctx context.Context, job EvalJob) error {
 		return fmt.Errorf("failed to check idempotency key: %w", err)
 	}
 	if !set {
-		// Key already exists - job was already enqueued
 		return ErrJobAlreadyEnqueued
 	}
 
 	data, err := json.Marshal(job)
 	if err != nil {
-		// Clean up idempotency key on marshal failure
 		q.client.Del(ctx, idempotencyKey)
 		return fmt.Errorf("failed to marshal job: %w", err)
 	}
 
-	// Use LPUSH to add to the left of the list (FIFO with BRPOP)
-	if err := q.client.LPush(ctx, EvalJobsQueue, data).Err(); err != nil {
-		// Clean up idempotency key on enqueue failure
+	queueKey := evalJobsPrefix + job.AgentID
+	pipe := q.client.Pipeline()
+	pipe.LPush(ctx, queueKey, data)
+	pipe.SAdd(ctx, evalAgentsSet, job.AgentID)
+	if _, err := pipe.Exec(ctx); err != nil {
 		q.client.Del(ctx, idempotencyKey)
 		return fmt.Errorf("failed to enqueue job: %w", err)
 	}
@@ -102,34 +102,14 @@ func (q *RedisQueue) EnqueueEvalJob(ctx context.Context, job EvalJob) error {
 	return nil
 }
 
-// DequeueEvalJob retrieves and removes an evaluation job from the queue
-// This blocks until a job is available or the context is cancelled
-func (q *RedisQueue) DequeueEvalJob(ctx context.Context) (*EvalJob, error) {
-	// BRPOP blocks until an element is available
-	result, err := q.client.BRPop(ctx, 0, EvalJobsQueue).Result()
-	if err != nil {
-		if err == redis.Nil {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("failed to dequeue job: %w", err)
-	}
-
-	// result[0] is the queue name, result[1] is the value
-	if len(result) < 2 {
-		return nil, fmt.Errorf("unexpected result format from BRPOP")
-	}
-
-	var job EvalJob
-	if err := json.Unmarshal([]byte(result[1]), &job); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal job: %w", err)
-	}
-
-	return &job, nil
+// GetAgentQueueLength returns the number of pending jobs for a specific agent.
+func (q *RedisQueue) GetAgentQueueLength(ctx context.Context, agentID string) (int64, error) {
+	return q.client.LLen(ctx, evalJobsPrefix+agentID).Result()
 }
 
-// GetQueueLength returns the number of jobs in the queue
-func (q *RedisQueue) GetQueueLength(ctx context.Context) (int64, error) {
-	return q.client.LLen(ctx, EvalJobsQueue).Result()
+// GetActiveAgents returns all agent IDs that have pending eval jobs.
+func (q *RedisQueue) GetActiveAgents(ctx context.Context) ([]string, error) {
+	return q.client.SMembers(ctx, evalAgentsSet).Result()
 }
 
 // SetProgress sets the progress for an evaluation run
