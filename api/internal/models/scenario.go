@@ -362,6 +362,13 @@ type ScenarioUpdate struct {
 	RegulatoryMapping        []string `json:"regulatoryMapping,omitempty"`        // New regulatory mapping
 }
 
+// ImportScenariosRequest represents a request to import user-provided scenarios directly
+type ImportScenariosRequest struct {
+	EvalType  string          `json:"evalType"`            // Required: "red_team" or "trust"
+	Name      string          `json:"name,omitempty"`      // Optional: descriptive name for the scenario set
+	Scenarios []ScenarioInput `json:"scenarios"`           // Required: at least 1 scenario
+}
+
 // ScenarioSetListResponse represents a list of scenario sets
 type ScenarioSetListResponse struct {
 	ScenarioSets []ScenarioSetSummary `json:"scenarioSets"`

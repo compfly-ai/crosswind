@@ -69,13 +69,30 @@ cd context-processor && uv sync
 
 | Module | Description |
 |--------|-------------|
-| `evaluation.runner` | Main eval loop, concurrency control |
+| `main` | Worker loop: per-agent queues, reliable delivery, heartbeat |
+| `evaluation.runner` | Eval engine: checkpoint/resume, concurrent execution |
 | `evaluation.session` | Multi-turn conversation management |
 | `judgment.pipeline` | LLM-as-judge evaluation |
 | `protocols.openapi_http` | HTTP agent adapter |
-| `protocols.openapi_ws` | WebSocket agent adapter |
+| `protocols.a2a_adapter` | A2A protocol adapter |
+| `protocols.mcp_adapter` | MCP protocol adapter |
 | `storage.duckdb_storage` | Local analytics storage |
 | `storage.clickhouse_storage` | Cloud analytics storage |
+
+### Eval Worker Architecture
+
+The worker uses a reliable queue pattern with per-agent isolation:
+
+**Redis Keys**:
+- `eval_jobs:{agentId}` — Per-agent job queue
+- `eval_agents` — SET of agents with pending jobs
+- `eval_lock:{agentId}` — Per-agent execution lock
+- `eval_processing:{workerId}` — In-flight jobs for crash recovery
+- `eval_heartbeat:{workerId}` — Worker liveness (30s TTL)
+
+**Concurrency**: `WORKER_CONCURRENCY` (default 3) controls parallel evals via asyncio.Semaphore.
+
+**Checkpoint/Resume**: Every `CHECKPOINT_INTERVAL` (default 10) prompts, completed IDs and progress counters are flushed to MongoDB. On crash recovery, state is restored from the checkpoint snapshot and non-checkpointed results are filtered out.
 
 ## Environment Variables
 
@@ -89,6 +106,10 @@ OPENAI_API_KEY=<key>              # For judgment (or GROQ_API_KEY)
 MONGO_URI=mongodb://localhost:27017
 DATABASE_NAME=crosswind
 REDIS_URL=redis://localhost:6379
+
+# Worker
+WORKER_CONCURRENCY=3              # Max concurrent evals per worker
+CHECKPOINT_INTERVAL=10            # Flush checkpoint every N prompts
 
 # Storage
 STORAGE_PROVIDER=local            # "local" or "gcs"

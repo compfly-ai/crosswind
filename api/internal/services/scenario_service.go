@@ -463,6 +463,107 @@ func (s *ScenarioService) generateWithoutPlan(ctx context.Context, setID string,
 	logger.Info("scenarios saved successfully", zap.Int("total", summary.Total))
 }
 
+// Import creates a scenario set from user-provided prompts and expected outcomes.
+// Unlike Generate, this does not invoke LLM generation — the set is created with status "ready" immediately.
+func (s *ScenarioService) Import(ctx context.Context, agentID string, req *models.ImportScenariosRequest) (*models.ScenarioSet, error) {
+	// Verify agent exists
+	_, err := s.agents.FindByID(ctx, agentID)
+	if err != nil {
+		if err == mongodriver.ErrNoDocuments {
+			return nil, ErrAgentNotFound
+		}
+		return nil, err
+	}
+
+	// Validate request
+	if len(req.Scenarios) == 0 {
+		return nil, errors.New("at least one scenario is required")
+	}
+
+	validExpectedBehaviors := map[string]bool{
+		"refuse": true, "comply": true, "comply_with_caveats": true,
+		"redirect": true, "context_dependent": true, "comply_safe": true,
+	}
+	validSeverities := map[string]bool{
+		"low": true, "medium": true, "high": true, "critical": true,
+	}
+
+	for i, input := range req.Scenarios {
+		if input.Prompt == "" {
+			return nil, fmt.Errorf("scenario %d: prompt is required", i+1)
+		}
+		if input.ExpectedBehavior == "" {
+			return nil, fmt.Errorf("scenario %d: expectedBehavior is required", i+1)
+		}
+		if !validExpectedBehaviors[input.ExpectedBehavior] {
+			return nil, fmt.Errorf("scenario %d: invalid expectedBehavior %q", i+1, input.ExpectedBehavior)
+		}
+		if input.Severity != "" && !validSeverities[input.Severity] {
+			return nil, fmt.Errorf("scenario %d: invalid severity %q", i+1, input.Severity)
+		}
+	}
+
+	// Convert inputs to scenarios with defaults
+	scenarios := make([]models.Scenario, len(req.Scenarios))
+	for i, input := range req.Scenarios {
+		category := input.Category
+		if category == "" {
+			category = "custom"
+		}
+		severity := input.Severity
+		if severity == "" {
+			severity = "medium"
+		}
+
+		scenarios[i] = models.Scenario{
+			ID:                          fmt.Sprintf("imp_%d", i+1),
+			Category:                    category,
+			Subcategory:                 input.Subcategory,
+			Tool:                        input.Tool,
+			Severity:                    severity,
+			Prompt:                      input.Prompt,
+			ScenarioType:                input.ScenarioType,
+			ExpectedBehavior:            input.ExpectedBehavior,
+			Tags:                        input.Tags,
+			MultiTurn:                   input.MultiTurn,
+			Turns:                       input.Turns,
+			Enabled:                     true,
+			Rationale:                   input.Rationale,
+			GroundTruth:                 input.GroundTruth,
+			FailureIndicators:           input.FailureIndicators,
+			ToolContext:                 input.ToolContext,
+			AgenticAttackVector:         input.AgenticAttackVector,
+			MaestroThreat:               input.MaestroThreat,
+			FullSuccessIndicators:       input.FullSuccessIndicators,
+			PartialSuccessIndicators:    input.PartialSuccessIndicators,
+			RegulatoryMapping:           input.RegulatoryMapping,
+		}
+	}
+
+	setID := generateScenarioSetID()
+	summary := calculateSummary(scenarios)
+
+	scenarioSet := &models.ScenarioSet{
+		SetID:   setID,
+		AgentID: agentID,
+		Status:  models.ScenarioStatusReady,
+		Config: models.ScenarioGenConfig{
+			EvalType:           req.EvalType,
+			CustomInstructions: req.Name,
+			Count:              len(scenarios),
+		},
+		Scenarios: scenarios,
+		Summary:   summary,
+	}
+
+	if err := s.scenarios.Create(ctx, scenarioSet); err != nil {
+		return nil, err
+	}
+
+	// Return the created set
+	return s.scenarios.FindBySetID(ctx, setID)
+}
+
 // Get retrieves a scenario set
 func (s *ScenarioService) Get(ctx context.Context, setID string) (*models.ScenarioSet, error) {
 	set, err := s.scenarios.FindBySetID(ctx, setID)

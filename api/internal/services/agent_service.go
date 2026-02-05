@@ -585,10 +585,12 @@ func (s *AgentService) GetWithCredentials(ctx context.Context, agentID string) (
 	return agent, nil
 }
 
-// UpdateInferredSchema updates the agent's inferred API schema
+// UpdateInferredSchema updates the agent's inferred API schema and activates the agent.
+// When a schema is successfully inferred, the agent is ready for evaluation.
 func (s *AgentService) UpdateInferredSchema(ctx context.Context, agentID string, schema *models.InferredAPISchema) error {
 	return s.agentRepo.Update(ctx, agentID, bson.M{
 		"inferredSchema": schema,
+		"status":         models.AgentStatusActive,
 	})
 }
 

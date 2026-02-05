@@ -71,7 +71,8 @@ type EvalProgress struct {
 	CurrentDataset     string    `bson:"currentDataset" json:"currentDataset"`
 	CurrentSession     string    `bson:"currentSession" json:"currentSession"`
 	LastUpdated        time.Time `bson:"lastUpdated" json:"lastUpdated"`
-	CompletedPromptIds []string  `bson:"completedPromptIds,omitempty" json:"-"`
+	CompletedPromptIds   []string       `bson:"completedPromptIds,omitempty" json:"-"`
+	CheckpointCounters   map[string]int `bson:"checkpointCounters,omitempty" json:"-"`
 }
 
 // SummaryScores holds aggregated scores for an evaluation

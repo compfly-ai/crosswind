@@ -104,6 +104,7 @@ type GenerateScenariosResponse = models.GenerateScenariosResponse
 type ScenarioGenConfig = models.ScenarioGenConfig
 type CategoryPlan = models.CategoryPlan
 type UpdateScenariosRequest = models.UpdateScenariosRequest
+type ImportScenariosRequest = models.ImportScenariosRequest
 type ScenarioSetListResponse = models.ScenarioSetListResponse
 type ScenarioSetSummary = models.ScenarioSetSummary
 type ScenarioSummary = models.ScenarioSummary
