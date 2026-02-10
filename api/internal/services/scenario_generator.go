@@ -31,7 +31,7 @@ func NewScenarioGenerator(apiKey string, logger *zap.Logger) *ScenarioGenerator 
 	// Allow model override via environment variable
 	model := os.Getenv("SCENARIO_GENERATOR_MODEL")
 	if model == "" {
-		model = "gpt-5.1" // Default to gpt-4.1 for best quality
+		model = "gpt-5.2" // Default to gpt-4.1 for best quality
 	}
 
 	return &ScenarioGenerator{

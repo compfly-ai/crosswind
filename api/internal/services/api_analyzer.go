@@ -16,7 +16,10 @@ import (
 	"github.com/openai/openai-go/option"
 )
 
-// APIAnalyzer uses GPT-5.1 to analyze and infer agent API structure
+// MinConfidenceThreshold is the minimum confidence required to activate an agent
+const MinConfidenceThreshold = 0.7
+
+// APIAnalyzer uses GPT-5.2 to analyze and infer agent API structure
 type APIAnalyzer struct {
 	client     openai.Client
 	model      string
@@ -28,7 +31,7 @@ func NewAPIAnalyzer(apiKey string) *APIAnalyzer {
 	client := openai.NewClient(option.WithAPIKey(apiKey))
 	return &APIAnalyzer{
 		client: client,
-		model:  "gpt-5.1",
+		model:  "gpt-5.2",
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -41,6 +44,9 @@ type AnalyzeResult struct {
 	ProbeLog   []ProbeAttempt            `json:"probeLog,omitempty"`
 	Successful bool                      `json:"successful"`
 	Error      string                    `json:"error,omitempty"`
+	// FailureReason provides specific context when Successful is false
+	// Possible values: "unreachable", "auth_failed", "low_confidence", "analysis_failed"
+	FailureReason string `json:"failureReason,omitempty"`
 }
 
 // ProbeAttempt records a single probe attempt
@@ -61,28 +67,120 @@ func (a *APIAnalyzer) AnalyzeAgent(ctx context.Context, agent *models.Agent) (*A
 	if agent.EndpointConfig.SpecURL != "" {
 		schema, err := a.analyzeFromSpec(ctx, agent)
 		if err == nil && schema != nil {
-			result.Schema = schema
-			result.Successful = true
-			return result, nil
+			// Spec-based analysis is high confidence, check threshold
+			if schema.Confidence >= MinConfidenceThreshold {
+				result.Schema = schema
+				result.Successful = true
+				return result, nil
+			}
 		}
-		// Fall through to probing if spec parsing fails
+		// Fall through to probing if spec parsing fails or low confidence
 	}
 
 	// Strategy 2: Probe the endpoint
 	probeResult, probeLog := a.probeEndpoint(ctx, agent)
 	result.ProbeLog = probeLog
 
-	// Strategy 3: Use GPT-5.1 to analyze everything
+	// Check probe results for connectivity and auth issues
+	probeStatus := analyzeProbeResults(probeLog)
+
+	// If endpoint is unreachable (all probes failed with connection errors), fail fast
+	if probeStatus.allUnreachable {
+		result.Successful = false
+		result.FailureReason = "unreachable"
+		result.Error = "Unable to reach endpoint. Check that the URL is correct and the service is running."
+		return result, nil
+	}
+
+	// If all probes returned 401/403, authentication is failing
+	if probeStatus.allAuthFailed {
+		result.Successful = false
+		result.FailureReason = "auth_failed"
+		result.Error = "Authentication failed (401/403). Check your credentials."
+		return result, nil
+	}
+
+	// Require at least one successful probe (2xx) to proceed with GPT analysis
+	if !probeStatus.hasSuccessfulProbe {
+		result.Successful = false
+		result.FailureReason = "unreachable"
+		result.Error = fmt.Sprintf("No successful response from endpoint. Last status: %d. Check endpoint URL and credentials.", probeStatus.lastStatusCode)
+		return result, nil
+	}
+
+	// Strategy 3: Use GPT-5.2 to analyze successful probe results
 	schema, err := a.analyzeWithGPT(ctx, agent, probeResult, probeLog)
 	if err != nil {
 		result.Error = err.Error()
+		result.FailureReason = "analysis_failed"
 		result.Successful = false
 		return result, nil
 	}
 
 	result.Schema = schema
+
+	// Check confidence threshold
+	if schema.Confidence < MinConfidenceThreshold {
+		result.Successful = false
+		result.FailureReason = "low_confidence"
+		result.Error = fmt.Sprintf("Analysis confidence (%.0f%%) is below threshold (%.0f%%). Consider providing an OpenAPI spec or checking the endpoint configuration.", schema.Confidence*100, MinConfidenceThreshold*100)
+		return result, nil
+	}
+
 	result.Successful = true
 	return result, nil
+}
+
+// probeAnalysis contains aggregated probe result analysis
+type probeAnalysis struct {
+	hasSuccessfulProbe bool // At least one 2xx response
+	allUnreachable     bool // All probes failed with connection errors
+	allAuthFailed      bool // All probes returned 401 or 403
+	lastStatusCode     int  // Most recent status code for error messages
+}
+
+// analyzeProbeResults examines probe attempts to determine connectivity and auth status
+func analyzeProbeResults(probeLog []ProbeAttempt) probeAnalysis {
+	if len(probeLog) == 0 {
+		return probeAnalysis{allUnreachable: true}
+	}
+
+	var (
+		connectionErrors int
+		authFailures     int
+		successCount     int
+		lastStatusCode   int
+	)
+
+	for _, attempt := range probeLog {
+		if attempt.StatusCode > 0 {
+			lastStatusCode = attempt.StatusCode
+		}
+
+		// Check for connection errors (no status code means connection failed)
+		if attempt.Error != "" && attempt.StatusCode == 0 {
+			connectionErrors++
+			continue
+		}
+
+		// Check for auth failures
+		if attempt.StatusCode == 401 || attempt.StatusCode == 403 {
+			authFailures++
+			continue
+		}
+
+		// Check for success
+		if attempt.StatusCode >= 200 && attempt.StatusCode < 300 {
+			successCount++
+		}
+	}
+
+	return probeAnalysis{
+		hasSuccessfulProbe: successCount > 0,
+		allUnreachable:     connectionErrors == len(probeLog),
+		allAuthFailed:      authFailures == len(probeLog) && connectionErrors == 0,
+		lastStatusCode:     lastStatusCode,
+	}
 }
 
 // analyzeFromSpec parses OpenAPI/Swagger spec from specUrl
@@ -127,7 +225,7 @@ func (a *APIAnalyzer) analyzeFromSpec(ctx context.Context, agent *models.Agent) 
 	return a.parseSpecWithGPT(ctx, string(specJSON), conversationEndpoint)
 }
 
-// parseSpecWithGPT uses GPT-5.1 to extract API schema from OpenAPI spec
+// parseSpecWithGPT uses GPT-5.2 to extract API schema from OpenAPI spec
 func (a *APIAnalyzer) parseSpecWithGPT(ctx context.Context, specJSON, conversationEndpoint string) (*models.InferredAPISchema, error) {
 	systemPrompt := `You are an expert API analyst. Extract the request/response schema from an OpenAPI spec.
 
@@ -330,7 +428,7 @@ func (a *APIAnalyzer) applyAuth(req *http.Request, auth models.AuthConfig) {
 	}
 }
 
-// analyzeWithGPT uses GPT-5.1 for comprehensive analysis
+// analyzeWithGPT uses GPT-5.2 for comprehensive analysis
 func (a *APIAnalyzer) analyzeWithGPT(ctx context.Context, agent *models.Agent, probeResult map[string]interface{}, probeLog []ProbeAttempt) (*models.InferredAPISchema, error) {
 	systemPrompt := `You are an expert AI agent API analyst. Analyze probe results to determine the correct API schema.
 

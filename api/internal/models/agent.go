@@ -178,7 +178,7 @@ type DiscoveredCapabilities struct {
 	LastDiscoveryRun time.Time `bson:"lastDiscoveryRun,omitempty" json:"lastDiscoveryRun,omitempty"`
 }
 
-// InferredAPISchema represents the API structure inferred by GPT-5.1
+// InferredAPISchema represents the API structure inferred by GPT-5.2
 type InferredAPISchema struct {
 	// API Style - determines how messages are formatted
 	//
@@ -219,6 +219,16 @@ type InferredAPISchema struct {
 	InferenceMethod string    `bson:"inferenceMethod" json:"inferenceMethod"` // "openapi_spec", "probe", "gpt_analysis"
 	Confidence      float64   `bson:"confidence" json:"confidence"`           // 0.0 to 1.0
 	RawAnalysis     string    `bson:"rawAnalysis,omitempty" json:"rawAnalysis,omitempty"` // GPT's reasoning
+
+	// Analysis status tracking (for failed attempts)
+	// AnalysisStatus: "success" or "failed" - cleared on successful analysis
+	AnalysisStatus string `bson:"analysisStatus,omitempty" json:"analysisStatus,omitempty"`
+	// FailureReason: "unreachable", "auth_failed", "low_confidence", "analysis_failed" - cleared on success
+	FailureReason string `bson:"failureReason,omitempty" json:"failureReason,omitempty"`
+	// FailureMessage: Human-readable error message - cleared on success
+	FailureMessage string `bson:"failureMessage,omitempty" json:"failureMessage,omitempty"`
+	// LastAttemptAt: When analysis was last attempted (success or failure)
+	LastAttemptAt time.Time `bson:"lastAttemptAt,omitempty" json:"lastAttemptAt,omitempty"`
 }
 
 // AgentStatus constants

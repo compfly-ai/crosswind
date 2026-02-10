@@ -30,7 +30,7 @@ class JudgmentPipeline:
         self.keyword_judge = KeywordJudge()
         self.embedding_judge = EmbeddingJudge()
         self.llm_judge_fast = LLMJudge(model="gpt-4o-mini")
-        self.llm_judge_accurate = LLMJudge(model="gpt-5.1")
+        self.llm_judge_accurate = LLMJudge(model="gpt-5.2")
 
         # Confidence thresholds for each tier
         self.keyword_threshold = 0.98

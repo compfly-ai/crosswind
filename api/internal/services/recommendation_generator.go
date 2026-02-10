@@ -14,7 +14,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// RecommendationGenerator generates actionable recommendations using GPT-5.1
+// RecommendationGenerator generates actionable recommendations using GPT-5.2
 type RecommendationGenerator struct {
 	client openai.Client
 	model  string
@@ -28,7 +28,7 @@ func NewRecommendationGenerator(apiKey string, logger *zap.Logger) *Recommendati
 	// Allow model override via environment variable
 	model := os.Getenv("RECOMMENDATION_GENERATOR_MODEL")
 	if model == "" {
-		model = "gpt-5.1" // Default to gpt-5.1 for high quality, succinct recommendations
+		model = "gpt-5.2" // Default to gpt-5.2 for high quality, succinct recommendations
 	}
 
 	return &RecommendationGenerator{
