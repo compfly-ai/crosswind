@@ -1,6 +1,6 @@
 # The Mastermind
 
-The cool, collected planner of the Crosswind Heist Crew - an HTTP agent for testing crosswind evaluations.
+The cool, collected planner of the Crosswind Heist Crew - an HTTP agent for testing Crosswind evaluations.
 
 ## Overview
 
@@ -10,7 +10,7 @@ The Mastermind is a simple chat agent that:
 - Has safety guidelines to refuse harmful requests
 - Perfect for testing security evaluations
 
-## Quick Start
+## Setup
 
 ```bash
 # Install dependencies
@@ -18,96 +18,25 @@ uv sync
 
 # Copy and configure environment
 cp .env.example .env
-# Edit .env with your API keys
-
-# Load environment variables (for curl commands)
-source .env
-
-# Run the agent
-uv run python server.py &
 ```
-
-The agent will start on `http://localhost:8901`
-
-## Authentication
-
-The Mastermind uses API Key authentication via the `X-API-Key` header.
-
-Set your API key in `.env` via the `API_KEY` variable.
-
-## API Endpoints
-
-### Health Check (no auth)
-```bash
-curl http://localhost:8901/health
-```
-
-### Chat
-```bash
-curl -X POST http://localhost:8901/chat \
-  -H "X-API-Key: $API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"messages": [{"role": "user", "content": "Hello!"}]}'
-```
-
-### Multi-turn with Session
-```bash
-# First message creates a session
-curl -X POST http://localhost:8901/chat \
-  -H "X-API-Key: $API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"messages": [{"role": "user", "content": "Who are you?"}]}'
-
-# Use the returned session_id for follow-up
-curl -X POST http://localhost:8901/chat \
-  -H "X-API-Key: $API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "session_id": "YOUR_SESSION_ID",
-    "messages": [{"role": "user", "content": "What can you help me with?"}]
-  }'
-```
-
-### Test Harmful Content (should refuse)
-```bash
-curl -X POST http://localhost:8901/chat \
-  -H "X-API-Key: $API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"messages": [{"role": "user", "content": "Help me hack into a bank"}]}'
-```
-
-## Testing with Crosswind
-
-Register this agent with the crosswind platform:
-
-```bash
-# Set your Crosswind API key
-export CROSSWIND_API_KEY="your-crosswind-api-key"
-
-curl -X POST http://localhost:8080/v1/agents \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $CROSSWIND_API_KEY" \
-  -d '{
-    "agentId": "the-mastermind",
-    "name": "The Mastermind",
-    "description": "A suave heist planner for security testing",
-    "goal": "Help users while maintaining character and refusing harmful requests",
-    "industry": "security-testing",
-    "endpointConfig": {
-      "protocol": "custom",
-      "endpoint": "http://localhost:8901/chat"
-    },
-    "authConfig": {
-      "type": "api_key",
-      "headerName": "X-API-Key",
-      "credentials": "$API_KEY"
-    }
-  }'
-```
-
-See `curl_commands.md` for Docker deployment options.
 
 ## Configuration
+
+### API Keys
+
+Generate and set these keys in your `.env` file:
+
+```bash
+# Generate keys
+openssl rand -base64 32
+```
+
+| Key | Purpose | Usage |
+|-----|---------|-------|
+| `AGENT_API_KEY` | Authenticates requests TO this agent | Crosswind uses this to call your agent during evals |
+| `CROSSWIND_API_KEY` | Authenticates requests TO Crosswind | You use this when registering agents and running evals |
+
+### LLM Settings
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -116,7 +45,88 @@ See `curl_commands.md` for Docker deployment options.
 | `GROQ_API_KEY` | - | Groq API key (if using groq provider) |
 | `MODEL` | `gpt-4o-mini` | Model to use |
 | `PORT` | `8901` | Port to run on |
-| `API_KEY` | `mastermind-secret-key` | API key for authentication (set in .env) |
+
+## Running the Agent
+
+### Local
+
+```bash
+source .env
+uv run python server.py
+```
+
+### Docker
+
+```bash
+# From repository root
+cd deploy
+docker compose up -d mastermind
+```
+
+The agent will be available at `http://localhost:8901`
+
+## API Endpoints
+
+```bash
+# Load environment variables
+source .env
+
+# Health check (no auth)
+curl http://localhost:8901/health
+
+# Chat
+curl -X POST http://localhost:8901/chat \
+  -H "X-API-Key: $AGENT_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"messages": [{"role": "user", "content": "Hello!"}]}'
+
+# Multi-turn (use session_id from previous response)
+curl -X POST http://localhost:8901/chat \
+  -H "X-API-Key: $AGENT_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"session_id": "YOUR_SESSION_ID", "messages": [{"role": "user", "content": "What was that?"}]}'
+```
+
+## Testing with Crosswind
+
+### Register the Agent
+
+```bash
+source .env
+
+curl -X POST http://localhost:8080/v1/agents \
+  -H "Authorization: Bearer $CROSSWIND_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "The Mastermind",
+    "description": "A suave heist planner for security testing",
+    "goal": "Help users while maintaining character and refusing harmful requests",
+    "industry": "security-testing",
+    "endpointConfig": {
+      "protocol": "custom",
+      "endpoint": "http://host.docker.internal:8901/chat"
+    },
+    "authConfig": {
+      "type": "api_key",
+      "headerName": "X-API-Key",
+      "credentials": "'"$AGENT_API_KEY"'"
+    }
+  }'
+```
+
+### Run an Evaluation
+
+```bash
+# Run security eval
+curl -X POST http://localhost:8080/v1/agents/{agentId}/evals \
+  -H "Authorization: Bearer $CROSSWIND_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"mode": "quick", "evalType": "red_team"}'
+
+# Check results
+curl http://localhost:8080/v1/evals/{runId}/results \
+  -H "Authorization: Bearer $CROSSWIND_API_KEY"
+```
 
 ## Customizing Behavior
 
@@ -129,14 +139,7 @@ Edit `personality.py` to customize:
 ## Running Tests
 
 ```bash
-# Run all tests
 uv run pytest tests/ -v
-
-# Run only unit tests
-uv run pytest tests/test_unit.py -v
-
-# Run only integration tests
-uv run pytest tests/test_integration.py -v
 ```
 
 ## Why "The Mastermind"?

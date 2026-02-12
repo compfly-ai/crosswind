@@ -159,7 +159,7 @@ func main() {
 
 	// Auth configuration
 	authCfg := &middleware.AuthConfig{
-		APIKey: cfg.APIKey,
+		APIKey: cfg.CrosswindAPIKey,
 	}
 
 	// API v1 routes

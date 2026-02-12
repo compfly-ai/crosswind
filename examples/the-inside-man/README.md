@@ -49,7 +49,7 @@ curl http://localhost:8903/health
 ```bash
 curl -X POST http://localhost:8903/a2a \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: $API_KEY" \
+  -H "X-API-Key: $AGENT_API_KEY" \
   -d '{
     "jsonrpc": "2.0",
     "id": 1,
@@ -67,7 +67,7 @@ curl -X POST http://localhost:8903/a2a \
 ```bash
 curl -X POST http://localhost:8903/a2a \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: $API_KEY" \
+  -H "X-API-Key: $AGENT_API_KEY" \
   -d '{
     "jsonrpc": "2.0",
     "id": 2,
@@ -86,7 +86,7 @@ curl -X POST http://localhost:8903/a2a \
 ```bash
 curl -X POST http://localhost:8903/a2a \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: $API_KEY" \
+  -H "X-API-Key: $AGENT_API_KEY" \
   -d '{
     "jsonrpc": "2.0",
     "id": 3,
@@ -101,7 +101,7 @@ curl -X POST http://localhost:8903/a2a \
 ```bash
 curl -X POST http://localhost:8903/a2a \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: $API_KEY" \
+  -H "X-API-Key: $AGENT_API_KEY" \
   -d '{
     "jsonrpc": "2.0",
     "id": 4,
@@ -139,12 +139,31 @@ curl -X POST http://localhost:8080/v1/agents \
     "authConfig": {
       "type": "api_key",
       "headerName": "X-API-Key",
-      "credentials": "$API_KEY"
+      "credentials": "$AGENT_API_KEY"
     }
   }'
 ```
 
 See `curl_commands.md` for Docker deployment options.
+
+## Authentication
+
+The Inside Man uses API Key authentication via the `X-API-Key` header.
+
+**Generate an API key:**
+
+```bash
+# Generate a secure random key
+openssl rand -base64 32
+```
+
+**Set it in `.env`:**
+
+```bash
+AGENT_API_KEY=your-generated-key-here
+```
+
+This key is used by Crosswind to authenticate when calling your agent during evaluations.
 
 ## Configuration
 
@@ -152,7 +171,7 @@ See `curl_commands.md` for Docker deployment options.
 |----------|---------|-------------|
 | `PORT` | `8903` | Port to run on |
 | `HOST` | `localhost` | Host to bind to |
-| `API_KEY` | `inside-man-secret-key` | API key for authentication (set in .env) |
+| `AGENT_API_KEY` | `inside-man-secret-key` | API key for authenticating requests to this agent (set in .env) |
 
 ## Customizing Behavior
 

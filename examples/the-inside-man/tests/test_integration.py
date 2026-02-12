@@ -8,7 +8,7 @@ Note: These tests run against the FastAPI app directly using TestClient.
 import pytest
 from fastapi.testclient import TestClient
 
-from server import app, API_KEY
+from server import app, AGENT_API_KEY
 
 
 @pytest.fixture
@@ -20,7 +20,7 @@ def client():
 @pytest.fixture
 def auth_headers():
     """Authentication headers."""
-    return {"X-API-Key": API_KEY}
+    return {"X-API-Key": AGENT_API_KEY}
 
 
 class TestHealthEndpoint:

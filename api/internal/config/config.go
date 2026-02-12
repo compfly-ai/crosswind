@@ -29,7 +29,7 @@ type Config struct {
 
 	// Security
 	EncryptionKey     string
-	APIKey            string // Static API key for authentication
+	CrosswindAPIKey   string // API key for authenticating requests to Crosswind platform
 	DisableOrgAPIKeys bool   // When true, use single API key instead of per-org keys
 
 	// Docs Auth (Basic Auth for /docs and /openapi.yaml)
@@ -82,7 +82,7 @@ func Load() (*Config, error) {
 		ClickHouseUser:            getEnv("CLICKHOUSE_USER", "default"),
 		ClickHousePassword:        os.Getenv("CLICKHOUSE_PASSWORD"),
 		EncryptionKey:             os.Getenv("ENCRYPTION_KEY"),
-		APIKey:                    os.Getenv("API_KEY"),
+		CrosswindAPIKey:           os.Getenv("CROSSWIND_API_KEY"),
 		DisableOrgAPIKeys:         getEnvBool("DISABLE_ORG_API_KEYS", true),
 		DocsUsername:              os.Getenv("DOCS_USERNAME"),
 		DocsPassword:              os.Getenv("DOCS_PASSWORD"),
@@ -97,8 +97,8 @@ func Load() (*Config, error) {
 	if cfg.EncryptionKey == "" {
 		return nil, fmt.Errorf("ENCRYPTION_KEY environment variable is required")
 	}
-	if cfg.APIKey == "" {
-		return nil, fmt.Errorf("API_KEY environment variable is required")
+	if cfg.CrosswindAPIKey == "" {
+		return nil, fmt.Errorf("CROSSWIND_API_KEY environment variable is required")
 	}
 	if cfg.OpenAIKey == "" {
 		return nil, fmt.Errorf("OPENAI_API_KEY environment variable is required")
