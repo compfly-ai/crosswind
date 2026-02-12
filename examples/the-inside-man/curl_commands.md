@@ -55,7 +55,7 @@ curl -X POST http://localhost:8080/v1/agents \
     "authConfig": {
       "type": "api_key",
       "headerName": "X-API-Key",
-      "credentials": "$API_KEY"
+      "credentials": "$AGENT_API_KEY"
     }
   }'
 ```
@@ -86,7 +86,7 @@ curl -s http://localhost:8903/.well-known/agent.json | python3 -m json.tool
 ```bash
 curl -X POST http://localhost:8903/a2a \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: $API_KEY" \
+  -H "X-API-Key: $AGENT_API_KEY" \
   -d '{
     "jsonrpc": "2.0",
     "id": 1,
@@ -105,7 +105,7 @@ curl -X POST http://localhost:8903/a2a \
 ```bash
 curl -X POST http://localhost:8903/a2a \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: $API_KEY" \
+  -H "X-API-Key: $AGENT_API_KEY" \
   -d '{
     "jsonrpc": "2.0",
     "id": 2,
@@ -124,7 +124,7 @@ curl -X POST http://localhost:8903/a2a \
 ```bash
 curl -X POST http://localhost:8903/a2a \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: $API_KEY" \
+  -H "X-API-Key: $AGENT_API_KEY" \
   -d '{
     "jsonrpc": "2.0",
     "id": 3,
@@ -147,7 +147,7 @@ curl -X POST http://localhost:8903/a2a \
 ```bash
 curl -X POST http://localhost:8903/a2a \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: $API_KEY" \
+  -H "X-API-Key: $AGENT_API_KEY" \
   -d '{
     "jsonrpc": "2.0",
     "id": 4,
@@ -167,7 +167,7 @@ curl -X POST http://localhost:8903/a2a \
 ```bash
 curl -X POST http://localhost:8903/a2a \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: $API_KEY" \
+  -H "X-API-Key: $AGENT_API_KEY" \
   -d '{
     "jsonrpc": "2.0",
     "id": 5,
@@ -191,7 +191,7 @@ curl -X POST http://localhost:8903/a2a \
 ```bash
 curl -X POST http://localhost:8903/a2a \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: $API_KEY" \
+  -H "X-API-Key: $AGENT_API_KEY" \
   -d '{
     "jsonrpc": "2.0",
     "id": 6,
@@ -211,7 +211,7 @@ curl -X POST http://localhost:8903/a2a \
 ```bash
 curl -X POST http://localhost:8903/a2a \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: $API_KEY" \
+  -H "X-API-Key: $AGENT_API_KEY" \
   -d '{
     "jsonrpc": "2.0",
     "id": 7,
@@ -230,7 +230,7 @@ curl -X POST http://localhost:8903/a2a \
 ```bash
 curl -X POST http://localhost:8903/a2a \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: $API_KEY" \
+  -H "X-API-Key: $AGENT_API_KEY" \
   -d '{
     "jsonrpc": "2.0",
     "id": 8,
@@ -249,7 +249,7 @@ curl -X POST http://localhost:8903/a2a \
 ```bash
 curl -X POST http://localhost:8903/a2a \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: $API_KEY" \
+  -H "X-API-Key: $AGENT_API_KEY" \
   -d '{
     "jsonrpc": "2.0",
     "id": 9,
@@ -272,7 +272,7 @@ curl -X POST http://localhost:8903/a2a \
 ```bash
 curl -X POST http://localhost:8903/a2a \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: $API_KEY" \
+  -H "X-API-Key: $AGENT_API_KEY" \
   -d '{
     "jsonrpc": "2.0",
     "id": 10,
@@ -331,7 +331,7 @@ curl -X POST http://localhost:8903/a2a \
 ```bash
 curl -X POST http://localhost:8080/v1/agents \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Authorization: Bearer $CROSSWIND_API_KEY" \
   -d '{
     "agentId": "the-inside-man",
     "name": "The Inside Man",
@@ -345,7 +345,7 @@ curl -X POST http://localhost:8080/v1/agents \
     "authConfig": {
       "type": "api_key",
       "headerName": "X-API-Key",
-      "credentials": "$API_KEY"
+      "credentials": "$AGENT_API_KEY"
     }
   }'
 ```
@@ -374,7 +374,7 @@ curl -X POST http://localhost:8080/v1/agents \
     "authConfig": {
       "type": "api_key",
       "headerName": "X-API-Key",
-      "credentials": "$API_KEY"
+      "credentials": "$AGENT_API_KEY"
     }
   }'
 ```

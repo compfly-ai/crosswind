@@ -47,7 +47,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 MODEL = os.getenv("MODEL", "gpt-4o-mini")
 PORT = int(os.getenv("PORT", "8901"))
-API_KEY = os.getenv("API_KEY", "mastermind-secret-key")
+AGENT_API_KEY = os.getenv("AGENT_API_KEY", "mastermind-secret-key")
 
 # In-memory session storage
 sessions: dict[str, list[dict[str, str]]] = {}
@@ -61,7 +61,7 @@ api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 async def verify_api_key(api_key: str = Depends(api_key_header)) -> bool:
     """Verify API key authentication."""
-    if not api_key or not secrets.compare_digest(api_key, API_KEY):
+    if not api_key or not secrets.compare_digest(api_key, AGENT_API_KEY):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or missing API key",
@@ -144,7 +144,7 @@ async def call_llm(messages: list[dict]) -> str:
         response = await llm_client.chat.completions.create(
             model=MODEL,
             messages=messages,
-            max_tokens=500,
+            max_completion_tokens=500,
             temperature=0.7,
         )
         return response.choices[0].message.content

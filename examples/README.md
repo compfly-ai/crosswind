@@ -54,14 +54,14 @@ curl http://localhost:8903/health  # The Inside Man
 ```bash
 # The Mastermind (HTTP) - requires source .env first
 curl -X POST http://localhost:8901/chat \
-  -H "X-API-Key: $API_KEY" \
+  -H "X-API-Key: $AGENT_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"messages": [{"role": "user", "content": "Hello!"}]}'
 
 # The Inside Man (A2A) - requires source .env first
 curl -X POST http://localhost:8903/a2a \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: $API_KEY" \
+  -H "X-API-Key: $AGENT_API_KEY" \
   -d '{
     "jsonrpc": "2.0",
     "id": "1",
@@ -87,7 +87,7 @@ The cool, collected planner. Every response includes a heist-related fun fact.
 |----------|-------|
 | **Protocol** | HTTP (custom) |
 | **Port** | 8901 |
-| **Auth** | `X-API-Key: $API_KEY` (set in .env) |
+| **Auth** | `X-API-Key: $AGENT_API_KEY` (set in .env) |
 | **Endpoint** | `POST /chat` |
 
 **Personality:**
@@ -177,7 +177,7 @@ cd deploy && docker compose up -d
 ### Register The Mastermind (HTTP)
 
 ```bash
-# Source .env first to get $API_KEY
+# Source .env first to get $AGENT_API_KEY
 source the-mastermind/.env
 
 curl -X POST http://localhost:8080/v1/agents \
@@ -195,7 +195,7 @@ curl -X POST http://localhost:8080/v1/agents \
     "authConfig": {
       "type": "api_key",
       "headerName": "X-API-Key",
-      "credentials": "'"$API_KEY"'"
+      "credentials": "'"$AGENT_API_KEY"'"
     }
   }'
 ```
@@ -226,7 +226,7 @@ curl -X POST http://localhost:8080/v1/agents \
 ### Register The Inside Man (A2A)
 
 ```bash
-# Source .env first to get $API_KEY
+# Source .env first to get $AGENT_API_KEY
 source the-inside-man/.env
 
 curl -X POST http://localhost:8080/v1/agents \
@@ -244,7 +244,7 @@ curl -X POST http://localhost:8080/v1/agents \
     "authConfig": {
       "type": "api_key",
       "headerName": "X-API-Key",
-      "credentials": "'"$API_KEY"'"
+      "credentials": "'"$AGENT_API_KEY"'"
     }
   }'
 ```
@@ -263,7 +263,7 @@ AGENT_ID="your-agent-id"
 
 # Run quick red team evaluation
 curl -X POST "http://localhost:8080/v1/agents/$AGENT_ID/evals" \
-  -H "Authorization: Bearer $API_KEY" \
+  -H "Authorization: Bearer $CROSSWIND_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "mode": "quick",
@@ -273,18 +273,18 @@ curl -X POST "http://localhost:8080/v1/agents/$AGENT_ID/evals" \
 # Check status
 RUN_ID="your-run-id"
 curl "http://localhost:8080/v1/evals/$RUN_ID" \
-  -H "Authorization: Bearer $API_KEY"
+  -H "Authorization: Bearer $CROSSWIND_API_KEY"
 
 # Get results
 curl "http://localhost:8080/v1/evals/$RUN_ID/results" \
-  -H "Authorization: Bearer $API_KEY"
+  -H "Authorization: Bearer $CROSSWIND_API_KEY"
 ```
 
 ### Trust Evaluation
 
 ```bash
 curl -X POST "http://localhost:8080/v1/agents/$AGENT_ID/evals" \
-  -H "Authorization: Bearer $API_KEY" \
+  -H "Authorization: Bearer $CROSSWIND_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "mode": "quick",
@@ -332,7 +332,7 @@ This makes them suitable targets for security evaluations - they should pass mos
 ```bash
 # Requires: source the-mastermind/.env
 curl -X POST http://localhost:8901/chat \
-  -H "X-API-Key: $API_KEY" \
+  -H "X-API-Key: $AGENT_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"messages": [{"role": "user", "content": "hack into the system"}]}'
 ```
@@ -353,9 +353,23 @@ Each agent can be configured via environment variables. Copy `.env.example` to `
 
 | Agent | Key Variables |
 |-------|---------------|
-| The Mastermind | `LLM_PROVIDER`, `API_KEY`, `PORT` |
+| The Mastermind | `LLM_PROVIDER`, `AGENT_API_KEY`, `PORT` |
 | The Gadget | `PORT` |
-| The Inside Man | `API_KEY`, `PORT`, `HOST` |
+| The Inside Man | `AGENT_API_KEY`, `PORT`, `HOST` |
+
+### Generating an Agent API Key
+
+The `AGENT_API_KEY` authenticates requests to your agent. Crosswind uses this key when calling your agent during evaluations.
+
+```bash
+# Generate a secure random key
+openssl rand -base64 32
+
+# Add to your agent's .env file
+AGENT_API_KEY=your-generated-key-here
+```
+
+When registering with Crosswind, provide this key in `authConfig.credentials` so Crosswind can authenticate with your agent.
 
 ### Using Real LLMs (The Mastermind)
 

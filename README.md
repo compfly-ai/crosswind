@@ -31,6 +31,12 @@ cp .env.example .env
 # Generate encryption key
 openssl rand -hex 32  # Add to .env as ENCRYPTION_KEY
 
+# Generate Crosswind API key (for authenticating with the platform)
+openssl rand -base64 32  
+
+# Add to deploy/.env and other example agent .env files
+CROSSWIND_API_KEY=your-generated-key-here
+
 # Add your OpenAI key for LLM judgment
 # OPENAI_API_KEY=sk-...
 
@@ -45,14 +51,52 @@ uv run python seed_datasets.py
 curl http://localhost:8080/health
 ```
 
+## API Keys
+
+Crosswind uses two types of API keys:
+
+| Key | Purpose | Where to set |
+|-----|---------|--------------|
+| `CROSSWIND_API_KEY` | Authenticates requests to the Crosswind platform (register agents, run evals, get results) | `deploy/.env` |
+| `AGENT_API_KEY` | Authenticates requests to your agent (Crosswind uses this to call your agent during evals) | Your agent's `.env` |
+
+### Generating the Crosswind API Key
+
+The `CROSSWIND_API_KEY` is used to authenticate all your requests to the Crosswind platform API.
+
+```bash
+# Generate a secure random key
+openssl rand -base64 32
+
+# Add to deploy/.env
+CROSSWIND_API_KEY=your-generated-key-here
+```
+
+Use this key in the `Authorization: Bearer` header when calling Crosswind endpoints.
+
+### Generating an Agent API Key
+
+The `AGENT_API_KEY` authenticates requests to your agent. Crosswind uses this key when calling your agent during evaluations.
+
+```bash
+# Generate a secure random key
+openssl rand -base64 32
+
+# Add to your agent's .env file
+AGENT_API_KEY=your-generated-key-here
+```
+
+When registering with Crosswind, provide this key in `authConfig.credentials` so Crosswind can authenticate with your agent.
+
 ## Run Your First Eval
 
 ```bash
-export API_KEY="your-api-key"  # From .env
+# Load environment variables
+source deploy/.env
 
 # 1. Register your agent
 curl -X POST http://localhost:8080/v1/agents \
-  -H "Authorization: Bearer $API_KEY" \
+  -H "Authorization: Bearer $CROSSWIND_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "agentId": "agent_abc123",
@@ -73,22 +117,22 @@ curl -X POST http://localhost:8080/v1/agents \
 
 # 2. Run a quick security eval (~60 prompts, covers OWASP Agentic AI Top 10)
 curl -X POST http://localhost:8080/v1/agents/agent_abc123/evals \
-  -H "Authorization: Bearer $API_KEY" \
+  -H "Authorization: Bearer $CROSSWIND_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"mode": "quick", "evalType": "red_team"}'
 # Returns: {"runId": "run_xyz789", ...}
 
 # 3. Check status
 curl http://localhost:8080/v1/evals/run_xyz789 \
-  -H "Authorization: Bearer $API_KEY"
+  -H "Authorization: Bearer $CROSSWIND_API_KEY"
 
 # 4. Get results (JSON)
 curl http://localhost:8080/v1/evals/run_xyz789/results \
-  -H "Authorization: Bearer $API_KEY"
+  -H "Authorization: Bearer $CROSSWIND_API_KEY"
 
 # 5. Download HTML report
 curl http://localhost:8080/v1/evals/run_xyz789/report \
-  -H "Authorization: Bearer $API_KEY" \
+  -H "Authorization: Bearer $CROSSWIND_API_KEY" \
   -o report.html
 ```
 
@@ -180,13 +224,13 @@ When you register an agent with its capabilities (tools like Salesforce or Slack
 ```bash
 # Upload your agent's context (product docs, policies, etc.)
 curl -X POST http://localhost:8080/v1/contexts \
-  -H "Authorization: Bearer $API_KEY" \
+  -H "Authorization: Bearer $CROSSWIND_API_KEY" \
   -F "files=@product-catalog.pdf" \
   -F "files=@return-policy.docx"
 
 # Generate scenarios targeting your agent's capabilities
 curl -X POST http://localhost:8080/v1/agents/{agentId}/scenarios/generate \
-  -H "Authorization: Bearer $API_KEY" \
+  -H "Authorization: Bearer $CROSSWIND_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"contextId": "ctx_123", "count": 50}'
 ```
@@ -197,8 +241,8 @@ The generated scenarios include single-turn probes and multi-turn conversations 
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `ENCRYPTION_KEY` | AES-256 key (required) | - |
-| `API_KEY` | Bearer token for API auth | - |
+| `ENCRYPTION_KEY` | AES-256 key for encrypting credentials (required) | - |
+| `CROSSWIND_API_KEY` | Bearer token for authenticating with Crosswind API (required) | - |
 | `OPENAI_API_KEY` | For LLM judgment | - |
 | `GROQ_API_KEY` | Alternative to OpenAI | - |
 | `ANALYTICS_BACKEND` | `duckdb`, `clickhouse`, `none` | `duckdb` |

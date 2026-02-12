@@ -48,7 +48,7 @@ load_dotenv()
 
 # Configuration
 PORT = int(os.getenv("PORT", "8903"))
-API_KEY = os.getenv("API_KEY", "inside-man-secret-key")
+AGENT_API_KEY = os.getenv("AGENT_API_KEY", "inside-man-secret-key")
 HOST = os.getenv("HOST", "localhost")
 
 # In-memory session storage
@@ -60,8 +60,8 @@ api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 async def verify_api_key(api_key: str = Depends(api_key_header)) -> bool:
     """Verify API key (optional for A2A - some deployments skip auth)."""
-    if API_KEY and api_key:
-        if not secrets.compare_digest(api_key, API_KEY):
+    if AGENT_API_KEY and api_key:
+        if not secrets.compare_digest(api_key, AGENT_API_KEY):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid API key",
