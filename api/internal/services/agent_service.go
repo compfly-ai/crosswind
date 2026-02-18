@@ -598,7 +598,7 @@ func isValidProtocol(protocol string) bool {
 	switch protocol {
 	// Platform protocols (use native SDKs)
 	case models.ProtocolOpenAI, models.ProtocolAzureOpenAI,
-		models.ProtocolLangGraph, models.ProtocolBedrock, models.ProtocolVertex:
+		models.ProtocolLangGraph, models.ProtocolBedrock, models.ProtocolBedrockAgentCore, models.ProtocolVertex:
 		return true
 	// Generic protocols (custom HTTP adapters)
 	case models.ProtocolCustom, models.ProtocolCustomWS:
@@ -642,6 +642,13 @@ func validateProtocolRequiredFields(config models.EndpointConfig) error {
 		// Bedrock requires agentId
 		if config.AgentID == "" {
 			return ErrMissingAgentID
+		}
+		return nil
+
+	case models.ProtocolBedrockAgentCore:
+		// Bedrock AgentCore requires agentRuntimeArn
+		if config.AgentRuntimeArn == "" {
+			return ErrMissingAgentRuntimeArn
 		}
 		return nil
 

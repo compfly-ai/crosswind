@@ -30,6 +30,7 @@ var (
 	ErrMissingEndpoint          = errors.New("endpoint is required for this protocol")
 	ErrMissingAgentIdentifier   = errors.New("either promptId or assistantId is required for this protocol")
 	ErrMissingAgentID           = errors.New("agentId is required for Bedrock protocol")
+	ErrMissingAgentRuntimeArn   = errors.New("agentRuntimeArn is required for BedrockAgentCore protocol")
 	ErrMissingProjectID         = errors.New("projectId is required for Vertex protocol")
 	ErrMissingReasoningEngineID = errors.New("reasoningEngineId is required for Vertex protocol")
 	ErrMissingAgentCardURL      = errors.New("agentCardUrl is required for A2A protocol")

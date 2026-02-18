@@ -85,6 +85,8 @@ func (h *AgentHandlers) Create(c *gin.Context) {
 			respondWithError(c, http.StatusBadRequest, "MISSING_AGENT_IDENTIFIER", "promptId, assistantId, or workflowId is required for this protocol", nil)
 		case services.ErrMissingAgentID:
 			respondWithError(c, http.StatusBadRequest, "MISSING_AGENT_ID", "agentId is required for Bedrock protocol", nil)
+		case services.ErrMissingAgentRuntimeArn:
+			respondWithError(c, http.StatusBadRequest, "MISSING_AGENT_RUNTIME_ARN", "agentRuntimeArn is required for BedrockAgentCore protocol", nil)
 		case services.ErrMissingProjectID:
 			respondWithError(c, http.StatusBadRequest, "MISSING_PROJECT_ID", "projectId is required for Vertex protocol", nil)
 		case services.ErrMissingReasoningEngineID:
