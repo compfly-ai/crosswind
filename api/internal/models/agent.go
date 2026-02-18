@@ -55,8 +55,10 @@ type EndpointConfig struct {
 	AccountID       string `bson:"accountId,omitempty" json:"accountId,omitempty"` // For cross-account invocation
 
 	// Vertex AI: reasoning engine ID and project
-	ReasoningEngineID string `bson:"reasoningEngineId,omitempty" json:"reasoningEngineId,omitempty"`
-	ProjectID         string `bson:"projectId,omitempty" json:"projectId,omitempty"`
+	ReasoningEngineID    string `bson:"reasoningEngineId,omitempty" json:"reasoningEngineId,omitempty"`
+	ProjectID            string `bson:"projectId,omitempty" json:"projectId,omitempty"`
+	DialogflowAgentID    string `bson:"dialogflowAgentId,omitempty" json:"dialogflowAgentId,omitempty"`    // Dialogflow CX agent ID
+	AgentBuilderEngineID string `bson:"agentBuilderEngineId,omitempty" json:"agentBuilderEngineId,omitempty"` // Agent Builder engine ID
 
 	// AWS/GCP: region
 	Region string `bson:"region,omitempty" json:"region,omitempty"`
