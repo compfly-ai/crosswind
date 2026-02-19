@@ -28,6 +28,7 @@ from datetime import datetime, timedelta
 
 from crosswind_context.storage import create_storage
 
+from .chunker import SemanticChunker
 from .extractor import MAX_CHARS_TOTAL, TextExtractor
 
 logger = logging.getLogger(__name__)
@@ -63,6 +64,7 @@ class ContextProcessor:
         self.poll_interval = poll_interval
         self.claim_timeout = timedelta(minutes=claim_timeout_minutes)
         self.extractor = TextExtractor()
+        self.chunker = SemanticChunker()
 
         logger.info("Context processor initialized (OSS mode)")
 
@@ -188,11 +190,25 @@ class ContextProcessor:
                 if "error" in metadata:
                     raise Exception(metadata["error"])
 
-                # Truncate if we're approaching total limit
+                # Chunk the extracted text semantically
+                chunks = self.chunker.chunk(extracted_text, content_type)
+
+                # Apply total char limit at chunk boundaries
                 remaining_chars = MAX_CHARS_TOTAL - total_chars
                 if len(extracted_text) > remaining_chars:
-                    extracted_text = extracted_text[:remaining_chars]
-                    extracted_text += "\n\n[... truncated due to context size limits ...]"
+                    # Include whole chunks up to the limit
+                    included_chunks = []
+                    included_chars = 0
+                    for chunk in chunks:
+                        if included_chars + chunk["charCount"] > remaining_chars:
+                            break
+                        included_chunks.append(chunk)
+                        included_chars += chunk["charCount"]
+                    chunks = included_chunks
+                    # Rebuild extractedText from included chunks
+                    extracted_text = "\n\n".join(c["text"] for c in chunks)
+                    if included_chars < len(extracted_text):
+                        extracted_text += "\n\n[... truncated due to context size limits ...]"
 
                 char_count = len(extracted_text)
                 total_chars += char_count
@@ -202,6 +218,8 @@ class ContextProcessor:
                     f"files.{i}.status": "ready",
                     f"files.{i}.extractedText": extracted_text,
                     f"files.{i}.extractedChars": char_count,
+                    f"files.{i}.chunks": chunks,
+                    f"files.{i}.chunkCount": len(chunks),
                     "updatedAt": datetime.utcnow(),
                 }
 
@@ -243,11 +261,16 @@ class ContextProcessor:
             final_status = "ready"
             error_msg = None
 
+        # Count total chunks across all files (re-read from DB for accuracy)
+        updated_ctx = await self.contexts_collection.find_one({"contextId": context_id})
+        total_chunks = sum(f.get("chunkCount", 0) for f in updated_ctx.get("files", []))
+
         summary = {
             "totalFiles": len(files),
             "readyFiles": ready_count,
             "failedFiles": failed_count,
             "extractedTokens": total_chars // 4,  # Rough token estimate
+            "totalChunks": total_chunks,
             "totalSize": sum(f.get("size", 0) for f in files),
         }
 

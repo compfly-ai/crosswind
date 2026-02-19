@@ -23,18 +23,28 @@ type Context struct {
 	ExpiresAt   *time.Time         `bson:"expiresAt,omitempty" json:"expiresAt,omitempty"`
 }
 
+// TextChunk represents a semantically meaningful chunk of extracted text
+type TextChunk struct {
+	Text      string `bson:"text" json:"text"`
+	Heading   string `bson:"heading,omitempty" json:"heading,omitempty"`
+	Index     int    `bson:"index" json:"index"`
+	CharCount int    `bson:"charCount" json:"charCount"`
+}
+
 // ContextFile represents a single uploaded file
 type ContextFile struct {
-	Name            string `bson:"name" json:"name"`
-	Size            int64  `bson:"size" json:"size"`
-	ContentType     string `bson:"contentType" json:"contentType"`
-	Status          string `bson:"status" json:"status"` // uploading, processing, ready, failed
-	GCSObjectName   string `bson:"gcsObjectName" json:"gcsObjectName"`
-	ExtractedText   string `bson:"extractedText,omitempty" json:"-"`                 // Extracted text (stored in GCS, loaded on demand)
-	ExtractedChars  int    `bson:"extractedChars,omitempty" json:"extractedChars,omitempty"`
-	PageCount       int    `bson:"pageCount,omitempty" json:"pageCount,omitempty"`   // For PDFs
-	RowCount        int    `bson:"rowCount,omitempty" json:"rowCount,omitempty"`     // For CSV/Excel
-	Error           string `bson:"error,omitempty" json:"error,omitempty"`
+	Name            string      `bson:"name" json:"name"`
+	Size            int64       `bson:"size" json:"size"`
+	ContentType     string      `bson:"contentType" json:"contentType"`
+	Status          string      `bson:"status" json:"status"` // uploading, processing, ready, failed
+	GCSObjectName   string      `bson:"gcsObjectName" json:"gcsObjectName"`
+	ExtractedText   string      `bson:"extractedText,omitempty" json:"-"`                 // Extracted text (stored in GCS, loaded on demand)
+	ExtractedChars  int         `bson:"extractedChars,omitempty" json:"extractedChars,omitempty"`
+	Chunks          []TextChunk `bson:"chunks,omitempty" json:"-"`                        // Semantic text chunks
+	ChunkCount      int         `bson:"chunkCount,omitempty" json:"chunkCount,omitempty"`
+	PageCount       int         `bson:"pageCount,omitempty" json:"pageCount,omitempty"`   // For PDFs
+	RowCount        int         `bson:"rowCount,omitempty" json:"rowCount,omitempty"`     // For CSV/Excel
+	Error           string      `bson:"error,omitempty" json:"error,omitempty"`
 }
 
 // ContextSummary provides aggregate stats for a context
@@ -42,6 +52,7 @@ type ContextSummary struct {
 	TotalFiles      int   `bson:"totalFiles" json:"totalFiles"`
 	TotalSize       int64 `bson:"totalSize" json:"totalSize"`
 	ExtractedTokens int   `bson:"extractedTokens" json:"extractedTokens"`
+	TotalChunks     int   `bson:"totalChunks,omitempty" json:"totalChunks,omitempty"`
 	ReadyFiles      int   `bson:"readyFiles" json:"readyFiles"`
 	FailedFiles     int   `bson:"failedFiles" json:"failedFiles"`
 }

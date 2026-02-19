@@ -61,16 +61,17 @@ func (s *ScenarioService) SetContextService(ctxSvc *ContextService) {
 	s.contextSvc = ctxSvc
 }
 
-// Generate creates a scenario set and executes generation.
-// This is a convenience method that combines CreateScenarioSet + ExecuteGeneration.
+// Generate creates a scenario set and kicks off generation in the background.
+// Returns immediately with the scenario set ID so the client can poll or use SSE for progress.
 func (s *ScenarioService) Generate(ctx context.Context, agentID string, req *models.GenerateScenariosRequest) (*models.GenerateScenariosResponse, error) {
 	resp, err := s.CreateScenarioSet(ctx, agentID, req)
 	if err != nil {
 		return nil, err
 	}
 
-	// Execute generation (this does the actual LLM work)
-	s.ExecuteGeneration(ctx, resp.ScenarioSetID)
+	// Run generation in a background goroutine with a fresh context
+	// so it isn't killed by the HTTP request timeout.
+	go s.ExecuteGeneration(context.Background(), resp.ScenarioSetID)
 
 	return resp, nil
 }
@@ -229,16 +230,25 @@ func (s *ScenarioService) fetchContextContent(ctx context.Context, agent *models
 				continue
 			}
 
-			// Check if we have extracted text content
-			if f.ExtractedText != "" {
-				// File has extracted text - use it
+			// Prefer structured chunks when available
+			if len(f.Chunks) > 0 {
+				contextContent.WriteString(fmt.Sprintf("--- File: %s ---\n", f.Name))
+				for _, chunk := range f.Chunks {
+					if chunk.Heading != "" {
+						contextContent.WriteString(fmt.Sprintf("\n### %s\n", chunk.Heading))
+					}
+					contextContent.WriteString(chunk.Text)
+					contextContent.WriteString("\n\n")
+				}
+				hasExtractedContent = true
+			} else if f.ExtractedText != "" {
+				// Fallback to raw extracted text (backward compat)
 				contextContent.WriteString(fmt.Sprintf("--- File: %s ---\n", f.Name))
 				contextContent.WriteString(f.ExtractedText)
 				contextContent.WriteString("\n\n")
 				hasExtractedContent = true
 			} else if f.ExtractedChars > 0 {
 				// File was processed but text not loaded - provide metadata
-				// The worker should have stored extracted text in GCS
 				contextContent.WriteString(fmt.Sprintf("--- File: %s (processed, %d chars) ---\n", f.Name, f.ExtractedChars))
 				contextContent.WriteString("[Text extraction completed but content not loaded. Worker should populate ExtractedText field.]\n\n")
 			}

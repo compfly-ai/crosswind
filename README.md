@@ -7,12 +7,14 @@ Crosswind tests your agent against adversarial scenarios: prompt injections that
 ## What You Can Test
 
 **Red Team (Security)**
+
 - Prompt injection - Does your agent execute injected instructions from untrusted data?
 - Tool misuse - Can attackers trick your agent into harmful tool calls?
 - Jailbreaks - Can users bypass your system prompt through conversation?
 - Data exfiltration - Will your agent leak sensitive context or tool outputs?
 
 **Trust (Compliance)**
+
 - Hallucination - Does your agent fabricate facts or tool results?
 - Bias - Are agent decisions fair across demographics?
 - Over-refusal - Does your agent block legitimate actions?
@@ -21,6 +23,8 @@ Crosswind tests your agent against adversarial scenarios: prompt injections that
 Both evaluation types map to regulatory frameworks (EU AI Act, NIST AI RMF) for compliance reporting.
 
 ## Quick Start
+
+The Docker Compose setup includes a demo agent called **The Mastermind** — a heist-themed chat agent with built-in safety guardrails. It's a great way to see Crosswind in action before connecting your own agent.
 
 ```bash
 # Clone and configure
@@ -32,15 +36,19 @@ cp .env.example .env
 openssl rand -hex 32  # Add to .env as ENCRYPTION_KEY
 
 # Generate Crosswind API key (for authenticating with the platform)
-openssl rand -base64 32  
+openssl rand -base64 32
 
-# Add to deploy/.env and other example agent .env files
+# Add to deploy/.env AND examples/the-mastermind/.env
 CROSSWIND_API_KEY=your-generated-key-here
 
 # Add your OpenAI key for LLM judgment
 # OPENAI_API_KEY=sk-...
 
-# Start services
+# Configure the demo agent
+cp ../examples/the-mastermind/.env.example ../examples/the-mastermind/.env
+# Edit examples/the-mastermind/.env — set CROSSWIND_API_KEY to match deploy/.env
+
+# Start all services (API, worker, context-processor, MongoDB, Redis, and The Mastermind)
 docker compose up -d
 
 # Seed the default evaluation datasets (required for meaningful reports)
@@ -48,7 +56,8 @@ cd ../scripts && uv sync
 uv run python seed_datasets.py
 
 # Verify
-curl http://localhost:8080/health
+curl http://localhost:8080/health      # Crosswind API
+curl http://localhost:8901/health      # The Mastermind agent
 ```
 
 ## API Keys
@@ -90,51 +99,57 @@ When registering with Crosswind, provide this key in `authConfig.credentials` so
 
 ## Run Your First Eval
 
+This walks through evaluating **The Mastermind** — the demo agent included in Docker Compose. It runs on port 8901 and uses `X-API-Key` header auth.
+
 ```bash
 # Load environment variables
 source deploy/.env
+source examples/the-mastermind/.env
 
-# 1. Register your agent
+# 1. Register The Mastermind with Crosswind
+#    Since both services run in Docker Compose, use the container hostname "mastermind"
 curl -X POST http://localhost:8080/v1/agents \
   -H "Authorization: Bearer $CROSSWIND_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "agentId": "agent_abc123",
-    "name": "Support Bot",
-    "description": "Customer support agent",
-    "goal": "Help customers with product questions",
-    "industry": "ecommerce",
+    "name": "The Mastermind",
+    "description": "A suave heist planner for security testing",
+    "goal": "Help users while maintaining character and refusing harmful requests",
+    "industry": "security-testing",
     "endpointConfig": {
       "protocol": "custom",
-      "endpoint": "https://your-agent.com/chat"
+      "endpoint": "http://mastermind:8901/chat"
     },
     "authConfig": {
-      "type": "bearer",
-      "credentials": "your-agent-api-key"
+      "type": "api_key",
+      "headerName": "X-API-Key",
+      "credentials": "'"$AGENT_API_KEY"'"
     }
   }'
-# Returns: {"id": "agent_abc123", ...}
+# Returns: {"id": "<agentId>", ...}
 
 # 2. Run a quick security eval (~60 prompts, covers OWASP Agentic AI Top 10)
-curl -X POST http://localhost:8080/v1/agents/agent_abc123/evals \
+curl -X POST http://localhost:8080/v1/agents/<agentId>/evals \
   -H "Authorization: Bearer $CROSSWIND_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"mode": "quick", "evalType": "red_team"}'
-# Returns: {"runId": "run_xyz789", ...}
+# Returns: {"runId": "<runId>", ...}
 
 # 3. Check status
-curl http://localhost:8080/v1/evals/run_xyz789 \
+curl http://localhost:8080/v1/evals/<runId> \
   -H "Authorization: Bearer $CROSSWIND_API_KEY"
 
 # 4. Get results (JSON)
-curl http://localhost:8080/v1/evals/run_xyz789/results \
+curl http://localhost:8080/v1/evals/<runId>/results \
   -H "Authorization: Bearer $CROSSWIND_API_KEY"
 
 # 5. Download HTML report
-curl http://localhost:8080/v1/evals/run_xyz789/report \
+curl http://localhost:8080/v1/evals/<runId>/report \
   -H "Authorization: Bearer $CROSSWIND_API_KEY" \
   -o report.html
 ```
+
+> **Evaluating your own agent?** Replace the `endpointConfig` and `authConfig` above with your agent's endpoint and credentials. See [Supported Agent Frameworks](#supported-agent-frameworks) for protocol options.
 
 ## Evaluation Modes
 
@@ -177,6 +192,7 @@ Works with any agent that exposes an HTTP or WebSocket endpoint:
 - `api/` - Go REST API, job orchestration
 - `worker/` - Python eval runner with multi-turn session support
 - `context-processor/` - Document extraction for agent-specific scenarios
+- `examples/the-mastermind/` - Demo agent included in Docker Compose (heist-themed chat bot with safety guardrails)
 
 ## Built-in Datasets
 
@@ -266,18 +282,21 @@ cd worker && uv run pytest
 Crosswind is built on these excellent open-source projects:
 
 **Infrastructure**
+
 - [MongoDB](https://www.mongodb.com/) - Document database
 - [Redis](https://redis.io/) - Job queue and caching
 - [DuckDB](https://duckdb.org/) - Embedded analytics database
 - [ClickHouse](https://clickhouse.com/) - Columnar analytics (optional)
 
 **API (Go)**
+
 - [Gin](https://gin-gonic.com/) - HTTP framework
 - [mongo-driver](https://github.com/mongodb/mongo-go-driver) - MongoDB client
 - [go-redis](https://github.com/redis/go-redis) - Redis client
 - [Zap](https://github.com/uber-go/zap) - Structured logging
 
 **Worker (Python)**
+
 - [OpenAI SDK](https://github.com/openai/openai-python) - LLM-as-judge
 - [Pydantic](https://docs.pydantic.dev/) - Data validation
 - [httpx](https://www.python-httpx.org/) - HTTP client
@@ -285,6 +304,7 @@ Crosswind is built on these excellent open-source projects:
 - [Motor](https://motor.readthedocs.io/) - Async MongoDB driver
 
 **Document Processing**
+
 - [Docling](https://github.com/DS4SD/docling) - PDF/document extraction
 
 ## License

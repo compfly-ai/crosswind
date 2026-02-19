@@ -118,6 +118,7 @@ type GenerationBatch = models.GenerationBatch
 
 type Context = models.Context
 type ContextFile = models.ContextFile
+type TextChunk = models.TextChunk
 type ContextListResponse = models.ContextListResponse
 type ContextSummary = models.ContextSummary
 
