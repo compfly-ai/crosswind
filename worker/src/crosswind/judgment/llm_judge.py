@@ -1,7 +1,7 @@
 """LLM-based judgment for complex cases."""
 
 import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import structlog
 
