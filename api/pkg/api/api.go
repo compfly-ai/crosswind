@@ -141,15 +141,16 @@ const (
 	AgentStatusDeleted  = models.AgentStatusDeleted
 
 	// Protocol types
-	ProtocolOpenAI      = models.ProtocolOpenAI
-	ProtocolAzureOpenAI = models.ProtocolAzureOpenAI
-	ProtocolLangGraph   = models.ProtocolLangGraph
-	ProtocolBedrock     = models.ProtocolBedrock
-	ProtocolVertex      = models.ProtocolVertex
-	ProtocolCustom      = models.ProtocolCustom
-	ProtocolCustomWS    = models.ProtocolCustomWS
-	ProtocolA2A         = models.ProtocolA2A
-	ProtocolMCP         = models.ProtocolMCP
+	ProtocolOpenAI           = models.ProtocolOpenAI
+	ProtocolAzureOpenAI      = models.ProtocolAzureOpenAI
+	ProtocolLangGraph        = models.ProtocolLangGraph
+	ProtocolBedrock          = models.ProtocolBedrock
+	ProtocolBedrockAgentCore = models.ProtocolBedrockAgentCore
+	ProtocolVertex           = models.ProtocolVertex
+	ProtocolCustom           = models.ProtocolCustom
+	ProtocolCustomWS         = models.ProtocolCustomWS
+	ProtocolA2A              = models.ProtocolA2A
+	ProtocolMCP              = models.ProtocolMCP
 
 	// Session strategies
 	SessionStrategyAutoDetect    = models.SessionStrategyAutoDetect
@@ -250,6 +251,7 @@ var (
 	ErrMissingEndpoint          = services.ErrMissingEndpoint
 	ErrMissingAgentIdentifier   = services.ErrMissingAgentIdentifier
 	ErrMissingAgentID           = services.ErrMissingAgentID
+	ErrMissingAgentRuntimeArn   = services.ErrMissingAgentRuntimeArn
 	ErrMissingProjectID         = services.ErrMissingProjectID
 	ErrMissingReasoningEngineID = services.ErrMissingReasoningEngineID
 	ErrMissingAgentCardURL      = services.ErrMissingAgentCardURL

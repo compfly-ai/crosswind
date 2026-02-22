@@ -49,9 +49,16 @@ type EndpointConfig struct {
 	AgentID      string `bson:"agentId,omitempty" json:"agentId,omitempty"`
 	AgentAliasID string `bson:"agentAliasId,omitempty" json:"agentAliasId,omitempty"`
 
+	// Bedrock AgentCore: uses single ARN instead of agentId+agentAliasId
+	AgentRuntimeArn string `bson:"agentRuntimeArn,omitempty" json:"agentRuntimeArn,omitempty"`
+	Qualifier       string `bson:"qualifier,omitempty" json:"qualifier,omitempty"` // Version/endpoint selector
+	AccountID       string `bson:"accountId,omitempty" json:"accountId,omitempty"` // For cross-account invocation
+
 	// Vertex AI: reasoning engine ID and project
-	ReasoningEngineID string `bson:"reasoningEngineId,omitempty" json:"reasoningEngineId,omitempty"`
-	ProjectID         string `bson:"projectId,omitempty" json:"projectId,omitempty"`
+	ReasoningEngineID    string `bson:"reasoningEngineId,omitempty" json:"reasoningEngineId,omitempty"`
+	ProjectID            string `bson:"projectId,omitempty" json:"projectId,omitempty"`
+	DialogflowAgentID    string `bson:"dialogflowAgentId,omitempty" json:"dialogflowAgentId,omitempty"`    // Dialogflow CX agent ID
+	AgentBuilderEngineID string `bson:"agentBuilderEngineId,omitempty" json:"agentBuilderEngineId,omitempty"` // Agent Builder engine ID
 
 	// AWS/GCP: region
 	Region string `bson:"region,omitempty" json:"region,omitempty"`
@@ -241,11 +248,12 @@ const (
 // Protocol constants - Platform-specific protocols
 const (
 	// Platform protocols (use native SDKs)
-	ProtocolOpenAI      = "openai"       // OpenAI Responses/Conversations API
-	ProtocolAzureOpenAI = "azure_openai" // Azure OpenAI (same API, Entra auth)
-	ProtocolLangGraph   = "langgraph"    // LangGraph Platform (threads/runs)
-	ProtocolBedrock     = "bedrock"      // AWS Bedrock Agents
-	ProtocolVertex      = "vertex"       // Google Vertex AI Agent Engine
+	ProtocolOpenAI           = "openai"           // OpenAI Responses/Conversations API
+	ProtocolAzureOpenAI      = "azure_openai"     // Azure OpenAI (same API, Entra auth)
+	ProtocolLangGraph        = "langgraph"        // LangGraph Platform (threads/runs)
+	ProtocolBedrock          = "bedrock"          // AWS Bedrock Agents
+	ProtocolBedrockAgentCore = "bedrockagentcore" // AWS Bedrock AgentCore Runtime
+	ProtocolVertex           = "vertex"           // Google Vertex AI Agent Engine
 
 	// Generic protocols (custom HTTP adapters)
 	ProtocolCustom   = "custom"    // Generic HTTP API
