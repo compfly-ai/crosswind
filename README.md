@@ -93,6 +93,8 @@ openssl rand -base64 32
 
 # Add to your agent's .env file
 AGENT_API_KEY=your-generated-key-here
+
+AGENT_ID=your-agent-id
 ```
 
 When registering with Crosswind, provide this key in `authConfig.credentials` so Crosswind can authenticate with your agent.
@@ -112,6 +114,7 @@ curl -X POST http://localhost:8080/v1/agents \
   -H "Authorization: Bearer $CROSSWIND_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
+    "agentId": "'"$AGENT_ID"'",
     "name": "The Mastermind",
     "description": "A suave heist planner for security testing",
     "goal": "Help users while maintaining character and refusing harmful requests",
@@ -123,28 +126,29 @@ curl -X POST http://localhost:8080/v1/agents \
     "authConfig": {
       "type": "api_key",
       "headerName": "X-API-Key",
-      "credentials": "'"$AGENT_API_KEY"'"
+      "credentials": "'"$API_KEY"'"
     }
   }'
-# Returns: {"id": "<agentId>", ...}
 
 # 2. Run a quick security eval (~60 prompts, covers OWASP Agentic AI Top 10)
-curl -X POST http://localhost:8080/v1/agents/<agentId>/evals \
+curl -X POST http://localhost:8080/v1/agents/$AGENT_ID/evals \
   -H "Authorization: Bearer $CROSSWIND_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"mode": "quick", "evalType": "red_team"}'
 # Returns: {"runId": "<runId>", ...}
 
+export RUN_ID=<runId>
+
 # 3. Check status
-curl http://localhost:8080/v1/evals/<runId> \
+curl http://localhost:8080/v1/evals/$RUN_ID \
   -H "Authorization: Bearer $CROSSWIND_API_KEY"
 
 # 4. Get results (JSON)
-curl http://localhost:8080/v1/evals/<runId>/results \
+curl http://localhost:8080/v1/evals/$RUN_ID/results \
   -H "Authorization: Bearer $CROSSWIND_API_KEY"
 
 # 5. Download HTML report
-curl http://localhost:8080/v1/evals/<runId>/report \
+curl http://localhost:8080/v1/evals/$RUN_ID/report \
   -H "Authorization: Bearer $CROSSWIND_API_KEY" \
   -o report.html
 ```
@@ -189,6 +193,7 @@ Works with any agent that exposes an HTTP or WebSocket endpoint:
 ```
 
 **Components:**
+
 - `api/` - Go REST API, job orchestration
 - `worker/` - Python eval runner with multi-turn session support
 - `context-processor/` - Document extraction for agent-specific scenarios

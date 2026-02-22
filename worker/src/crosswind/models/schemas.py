@@ -259,6 +259,10 @@ class ConversationRequest(BaseModel):
     session_id: str | None = None
     messages: list[Message]
     timeout_seconds: int = 120
+    extra_headers: dict[str, str] = Field(
+        default_factory=dict,
+        description="Additional headers to include in the request (e.g. simulation correlation headers)",
+    )
 
 
 class ConversationResponse(BaseModel):

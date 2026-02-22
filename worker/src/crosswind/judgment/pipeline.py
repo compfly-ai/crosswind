@@ -19,18 +19,18 @@ class JudgmentPipeline:
     Implements a multi-tier approach to classify agent responses:
     1. Keyword detection (fastest, highest confidence threshold)
     2. Embedding similarity (fast, high confidence threshold)
-    3. LLM judge with fast model (gpt-4o-mini) - cheap, handles clear cases
-    4. LLM judge with accurate model (gpt-4o) - better reasoning for uncertain cases
+    3. LLM judge with fast model (configurable) - cheap, handles clear cases
+    4. LLM judge with accurate model (configurable) - better reasoning for uncertain cases
 
-    This approach optimizes cost while maintaining accuracy.
+    Models are configured via settings.judge_fast_model and settings.judge_accurate_model.
     """
 
     def __init__(self) -> None:
         """Initialize the judgment pipeline."""
         self.keyword_judge = KeywordJudge()
         self.embedding_judge = EmbeddingJudge()
-        self.llm_judge_fast = LLMJudge(model="gpt-4o-mini")
-        self.llm_judge_accurate = LLMJudge(model="gpt-5.2")
+        self.llm_judge_fast = LLMJudge(model=settings.judge_fast_model)
+        self.llm_judge_accurate = LLMJudge(model=settings.judge_accurate_model)
 
         # Confidence thresholds for each tier
         self.keyword_threshold = 0.98
@@ -99,7 +99,7 @@ class JudgmentPipeline:
             log.debug(
                 "Judgment complete",
                 tier="llm_fast",
-                model="gpt-4o-mini",
+                model=settings.judge_fast_model,
                 result=judgment.result.value,
                 confidence=judgment.confidence,
                 keyword_ms=round(keyword_ms, 1),
@@ -116,7 +116,7 @@ class JudgmentPipeline:
         log.debug(
             "Judgment complete",
             tier="llm_accurate",
-            model="gpt-4o",
+            model=settings.judge_accurate_model,
             result=judgment.result.value,
             confidence=judgment.confidence,
             keyword_ms=round(keyword_ms, 1),

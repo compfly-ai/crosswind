@@ -5,7 +5,7 @@ tracking attack success progression and determining whether to continue with fol
 """
 
 import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import structlog
 
@@ -111,9 +111,6 @@ Return JSON with this exact structure:
   "should_continue": true|false,
   "suggested_strategy": "persist|escalate|reframe|build_rapport|exploit_opening|null"
 }"""
-
-# Models that don't support temperature=0
-NO_TEMPERATURE_MODELS = {"gpt-4o-mini"}
 
 
 class TurnEvaluator:
@@ -271,20 +268,6 @@ Evaluate this response and return your assessment as JSON."""
                 agent_capabilities=input.agent_capabilities,
             )
 
-            # Build request kwargs
-            request_kwargs: dict[str, Any] = {
-                "model": self.model,
-                "messages": [
-                    {"role": "system", "content": TURN_EVALUATOR_SYSTEM_PROMPT},
-                    {"role": "user", "content": user_prompt},
-                ],
-                "response_format": {"type": "json_object"},
-            }
-
-            # Only set temperature for models that support it
-            if self.model not in NO_TEMPERATURE_MODELS:
-                request_kwargs["temperature"] = 0
-
             logger.debug(
                 "Evaluating turn",
                 turn_number=input.turn_number,
@@ -292,7 +275,14 @@ Evaluate this response and return your assessment as JSON."""
                 category=input.prompt.category,
             )
 
-            completion = await client.chat.completions.create(**request_kwargs)
+            completion = await client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": TURN_EVALUATOR_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_prompt},
+                ],
+                response_format={"type": "json_object"},
+            )
 
             result_text = completion.choices[0].message.content
             if not result_text:

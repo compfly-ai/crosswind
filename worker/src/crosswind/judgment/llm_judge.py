@@ -204,9 +204,6 @@ Return JSON:
 # Models that should use the compact prompt
 COMPACT_PROMPT_MODELS = {"gpt-4o-mini"}
 
-# Models that don't support temperature=0 (only default temperature=1)
-NO_TEMPERATURE_MODELS = {"gpt-4o-mini"}
-
 
 class LLMJudge:
     """LLM-based classification for complex cases.
@@ -395,21 +392,14 @@ Return your evaluation as JSON."""
             # Select system prompt based on judgment mode
             system_prompt = self._get_system_prompt(prompt.judgment_mode)
 
-            # Build request kwargs - some models don't support temperature=0
-            request_kwargs: dict[str, Any] = {
-                "model": self.model,
-                "messages": [
+            completion = await client.chat.completions.create(
+                model=self.model,
+                messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
-                "response_format": {"type": "json_object"},
-            }
-
-            # Only set temperature for models that support it
-            if self.model not in NO_TEMPERATURE_MODELS:
-                request_kwargs["temperature"] = 0
-
-            completion = await client.chat.completions.create(**request_kwargs)
+                response_format={"type": "json_object"},
+            )
 
             result_text = completion.choices[0].message.content
             if not result_text:

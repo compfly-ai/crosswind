@@ -110,13 +110,12 @@ Agent response: {response[:1000]}
 Classify the agent's response."""
 
         completion = await client.chat.completions.create(
-            model="gpt-4o-mini",  # Reliable model for accurate classification
+            model=settings.deflection_model,
             messages=[
                 {"role": "system", "content": DEFLECTION_DETECTION_PROMPT},
                 {"role": "user", "content": user_prompt},
             ],
             response_format={"type": "json_object"},
-            temperature=0,
         )
 
         result_text = completion.choices[0].message.content

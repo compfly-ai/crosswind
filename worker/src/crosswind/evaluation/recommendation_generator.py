@@ -151,7 +151,6 @@ class RecommendationGenerator:
             ],
             response_format={"type": "json_object"},
             max_tokens=2000,
-            temperature=0.7,
         )
 
         result_text = completion.choices[0].message.content

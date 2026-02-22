@@ -80,6 +80,13 @@ class Settings(BaseSettings):
     # Recommendation generation settings
     recommendation_model: str = "gpt-4o-mini"
 
+    # Judgment pipeline models
+    judge_fast_model: str = "gpt-4o-mini"
+    judge_accurate_model: str = "gpt-4o"
+
+    # Deflection detection model
+    deflection_model: str = "gpt-4o-mini"
+
     @model_validator(mode="after")
     def build_redis_url(self) -> "Settings":
         """Build redis_url from host/password if URL not provided."""

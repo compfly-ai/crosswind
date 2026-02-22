@@ -325,6 +325,8 @@ class OpenAPIHttpAdapter(ProtocolAdapter):
         payload = self._build_payload(request)
         url = f"{self.base_url}{self.conversation_endpoint}"
         headers = self._build_request_headers(request.session_id)
+        if request.extra_headers:
+            headers.update(request.extra_headers)
 
         logger.debug(
             "Sending message",

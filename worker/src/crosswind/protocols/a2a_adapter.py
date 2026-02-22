@@ -180,13 +180,17 @@ class A2AAdapter(ProtocolAdapter):
             session_id=request.session_id,
         )
 
+        headers = {
+            **self._auth_headers(),
+            "Content-Type": "application/json",
+        }
+        if request.extra_headers:
+            headers.update(request.extra_headers)
+
         response = await self.client.post(
             self.endpoint,
             json=jsonrpc_request,
-            headers={
-                **self._auth_headers(),
-                "Content-Type": "application/json",
-            },
+            headers=headers,
             timeout=request.timeout_seconds,
         )
 
