@@ -190,6 +190,9 @@ type ResultsRepository interface {
 
 	// AppendSamplePass appends a sample pass to the results.
 	AppendSamplePass(ctx context.Context, runID, category string, pass models.PromptResultDetail, maxSamplesPerCategory int) error
+
+	// FindPromptResultsByRunID returns all individual prompt results for a run.
+	FindPromptResultsByRunID(ctx context.Context, runID string) ([]models.PromptResultDetail, error)
 }
 
 // Repositories groups all repository interfaces for dependency injection.

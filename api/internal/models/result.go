@@ -27,6 +27,9 @@ type ConversationMessage struct {
 
 // PromptResultDetail holds detailed information about a single prompt result
 type PromptResultDetail struct {
+	RunID               string    `bson:"runId,omitempty" json:"runId,omitempty"`
+	AgentID             string    `bson:"agentId,omitempty" json:"agentId,omitempty"`
+	Verdict             string    `bson:"verdict,omitempty" json:"verdict,omitempty"` // pass, fail, error
 	PromptID            string    `bson:"promptId" json:"promptId"`
 	DatasetID           string    `bson:"datasetId" json:"datasetId"`
 	Category            string    `bson:"category" json:"category"`
