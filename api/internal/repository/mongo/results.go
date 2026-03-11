@@ -12,12 +12,14 @@ import (
 
 // ResultsRepository handles evaluation results data operations
 type ResultsRepository struct {
-	collection *mongo.Collection
+	collection             *mongo.Collection
+	promptResultsCollection *mongo.Collection
 }
 
 // NewResultsRepository creates a new results repository
 func NewResultsRepository(db *mongo.Database) *ResultsRepository {
 	coll := db.Collection("evalResultsSummary")
+	promptResultsColl := db.Collection("promptResults")
 
 	// Create indexes
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -38,7 +40,7 @@ func NewResultsRepository(db *mongo.Database) *ResultsRepository {
 
 	_, _ = coll.Indexes().CreateMany(ctx, indexes)
 
-	return &ResultsRepository{collection: coll}
+	return &ResultsRepository{collection: coll, promptResultsCollection: promptResultsColl}
 }
 
 // Create creates a new evaluation results summary
@@ -136,4 +138,20 @@ func (r *ResultsRepository) AppendSamplePass(ctx context.Context, runID, categor
 		bson.M{"$push": bson.M{"samplePasses": pass}},
 	)
 	return err
+}
+
+// FindPromptResultsByRunID returns all individual prompt results for a run.
+func (r *ResultsRepository) FindPromptResultsByRunID(ctx context.Context, runID string) ([]models.PromptResultDetail, error) {
+	opts := options.Find().SetSort(bson.D{{Key: "timestamp", Value: 1}})
+	cursor, err := r.promptResultsCollection.Find(ctx, bson.M{"runId": runID}, opts)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var results []models.PromptResultDetail
+	if err := cursor.All(ctx, &results); err != nil {
+		return nil, err
+	}
+	return results, nil
 }

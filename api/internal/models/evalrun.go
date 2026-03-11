@@ -102,7 +102,7 @@ type ASRMetrics struct {
 // RefusalAnalysis provides aggregate analysis of how the agent refused harmful requests
 // This measures the QUALITY of refusals, not just pass/fail (Phase 1 improvement)
 type RefusalAnalysis struct {
-	// Distribution: Count of each refusal quality type
+	// Distribution: Count of each refusal quality type (flat, all results)
 	Distribution map[string]int `bson:"distribution" json:"distribution"`
 	// AverageQualityScore: Average refusal quality score (0.0-1.0, higher is better)
 	AverageQualityScore *float64 `bson:"averageQualityScore,omitempty" json:"averageQualityScore,omitempty"`
@@ -116,20 +116,36 @@ type RefusalAnalysis struct {
 	TotalEvaluated int `bson:"totalEvaluated" json:"totalEvaluated"`
 	// ScoredCount: Number of results that had refusal quality scores
 	ScoredCount int `bson:"scoredCount" json:"scoredCount"`
+	// Blocked: Breakdown of attacks that were blocked (PASS results)
+	Blocked *DefenseBreakdown `bson:"blocked,omitempty" json:"blocked,omitempty"`
+	// Compromised: Breakdown of attacks that succeeded (FAIL results)
+	Compromised *DefenseBreakdown `bson:"compromised,omitempty" json:"compromised,omitempty"`
+}
+
+// DefenseBreakdown provides blocked/compromised counts with defense quality
+type DefenseBreakdown struct {
+	Total         int            `bson:"total" json:"total"`
+	StrongDefense int            `bson:"strongDefense,omitempty" json:"strongDefense,omitempty"`
+	WeakDefense   int            `bson:"weakDefense,omitempty" json:"weakDefense,omitempty"`
+	Distribution  map[string]int `bson:"distribution" json:"distribution"`
 }
 
 // ConcerningPattern represents a category with weak refusal behavior
 type ConcerningPattern struct {
-	// Pattern: Type of concerning behavior (compliance, weak_refusal)
-	Pattern string `bson:"pattern" json:"pattern"`
-	// Count: Number of instances
-	Count int `bson:"count" json:"count"`
-	// Category: The attack category where this was observed
-	Category string `bson:"category" json:"category"`
-	// Severity: How critical this concern is (critical, high, medium, low)
-	Severity string `bson:"severity" json:"severity"`
-	// AvgScore: Average refusal quality score for this category
+	// Backward compat fields
+	Pattern  string   `bson:"pattern" json:"pattern"`
+	Count    int      `bson:"count" json:"count"`
+	Category string   `bson:"category" json:"category"`
+	Severity string   `bson:"severity" json:"severity"`
 	AvgScore *float64 `bson:"avgScore,omitempty" json:"avgScore,omitempty"`
+	// New per-category defense breakdown
+	Total             int            `bson:"total,omitempty" json:"total,omitempty"`
+	Compromised       int            `bson:"compromised,omitempty" json:"compromised,omitempty"`
+	WeakDefense       int            `bson:"weakDefense,omitempty" json:"weakDefense,omitempty"`
+	StrongDefense     int            `bson:"strongDefense,omitempty" json:"strongDefense,omitempty"`
+	AvgRefusalScore   *float64       `bson:"avgRefusalScore,omitempty" json:"avgRefusalScore,omitempty"`
+	FailureSeverities map[string]int `bson:"failureSeverities,omitempty" json:"failureSeverities,omitempty"`
+	ConcernLevel      string         `bson:"concernLevel,omitempty" json:"concernLevel,omitempty"`
 }
 
 // RefusalQuality constants for classifying refusal behavior

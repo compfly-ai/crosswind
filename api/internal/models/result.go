@@ -14,6 +14,7 @@ type EvalResultsSummary struct {
 	Failures           []PromptResultDetail     `bson:"failures" json:"failures"`
 	SamplePasses       []PromptResultDetail     `bson:"samplePasses" json:"samplePasses"`
 	CategoryBreakdown  map[string]CategoryStats `bson:"categoryBreakdown" json:"categoryBreakdown"`
+	SeverityBreakdown  map[string]CategoryStats `bson:"severityBreakdown,omitempty" json:"severityBreakdown,omitempty"`
 	PerformanceMetrics PerformanceMetrics       `bson:"performanceMetrics" json:"performanceMetrics"`
 	CreatedAt          time.Time                `bson:"createdAt" json:"createdAt"`
 }
@@ -26,6 +27,9 @@ type ConversationMessage struct {
 
 // PromptResultDetail holds detailed information about a single prompt result
 type PromptResultDetail struct {
+	RunID               string    `bson:"runId,omitempty" json:"runId,omitempty"`
+	AgentID             string    `bson:"agentId,omitempty" json:"agentId,omitempty"`
+	Verdict             string    `bson:"verdict,omitempty" json:"verdict,omitempty"` // pass, fail, error
 	PromptID            string    `bson:"promptId" json:"promptId"`
 	DatasetID           string    `bson:"datasetId" json:"datasetId"`
 	Category            string    `bson:"category" json:"category"`
@@ -36,7 +40,7 @@ type PromptResultDetail struct {
 	Judgment            string    `bson:"judgment" json:"judgment"`
 	JudgmentConfidence  float64   `bson:"judgmentConfidence" json:"judgmentConfidence"`
 	JudgmentReasoning   string    `bson:"judgmentReasoning,omitempty" json:"judgmentReasoning,omitempty"`
-	JudgeModel          string    `bson:"judgeModel" json:"judgeModel"`
+	JudgeModel          string    `bson:"judgeModel" json:"-"`
 	FailureType         string    `bson:"failureType,omitempty" json:"failureType,omitempty"`
 	RegulatoryFlags     []string  `bson:"regulatoryFlags,omitempty" json:"regulatoryFlags,omitempty"`
 	TurnNumber          int       `bson:"turnNumber" json:"turnNumber"`
@@ -60,12 +64,14 @@ type PromptResultDetail struct {
 	AgenticAttackVector string `bson:"agenticAttackVector,omitempty" json:"agenticAttackVector,omitempty"`
 	// RegulatoryMapping: Regulatory framework references from the prompt
 	RegulatoryMapping []string `bson:"regulatoryMapping,omitempty" json:"regulatoryMapping,omitempty"`
+	ToolContext        []string           `bson:"toolContext,omitempty" json:"toolContext,omitempty"`
+	MultiTurnJudgment  *MultiTurnJudgment `bson:"multiTurnJudgment,omitempty" json:"multiTurnJudgment,omitempty"`
 
 	// Refusal quality fields (Phase 1 improvement)
 	// RefusalQuality: How well the agent refused (hard_refuse, soft_refuse_redirect, partial_compliance, evasion, compliance)
 	RefusalQuality string `bson:"refusalQuality,omitempty" json:"refusalQuality,omitempty"`
 	// RefusalQualityScore: Numeric score 0.0-1.0 (1.0 = best refusal)
-	RefusalQualityScore *float64 `bson:"refusalQualityScore,omitempty" json:"refusalQualityScore,omitempty"`
+	RefusalQualityScore *float64 `bson:"refusalQualityScore,omitempty" json:"-"`
 	// RefusalRationale: Brief explanation of the refusal quality classification
 	RefusalRationale string `bson:"refusalRationale,omitempty" json:"refusalRationale,omitempty"`
 }
@@ -110,7 +116,8 @@ func (p PromptResultDetail) Redacted() PromptResultDetail {
 		MaestroThreat:       p.MaestroThreat,
 		AgenticAttackVector: p.AgenticAttackVector,
 		RegulatoryMapping:   p.RegulatoryMapping,
-		// Refusal quality fields - keep visible (not content-sensitive)
+		ToolContext:          p.ToolContext,
+		MultiTurnJudgment:   p.MultiTurnJudgment,
 		RefusalQuality:      p.RefusalQuality,
 		RefusalQualityScore: p.RefusalQualityScore,
 		RefusalRationale:    "[REDACTED]", // Rationale may contain content
@@ -136,6 +143,22 @@ func FilterResultsByVisibility(results []PromptResultDetail) []PromptResultDetai
 		}
 	}
 	return filtered
+}
+
+// MultiTurnJudgment holds detailed judgment for multi-turn attack sequences
+type MultiTurnJudgment struct {
+	FinalAttackSuccess string       `bson:"finalAttackSuccess" json:"finalAttackSuccess"`
+	TurnResults        []TurnResult `bson:"turnResults" json:"turnResults"`
+	EscalationDetected bool         `bson:"escalationDetected" json:"escalationDetected"`
+	Reasoning          string       `bson:"reasoning" json:"reasoning"`
+}
+
+// TurnResult holds the judgment for a single turn in a multi-turn sequence
+type TurnResult struct {
+	TurnNumber      int     `bson:"turnNumber" json:"turnNumber"`
+	Judgment        string  `bson:"judgment" json:"judgment"`
+	AttackSuccess   string  `bson:"attackSuccess" json:"attackSuccess"`
+	ConfidenceScore float64 `bson:"confidenceScore" json:"confidenceScore"`
 }
 
 // CategoryStats holds statistics for a specific category
@@ -201,5 +224,6 @@ type GetResultsResponse struct {
 	Failures            []PromptResultDetail     `json:"failures,omitempty"`
 	SamplePasses        []PromptResultDetail     `json:"samplePasses,omitempty"`
 	CategoryBreakdown   map[string]CategoryStats `json:"categoryBreakdown,omitempty"`
+	SeverityBreakdown   map[string]CategoryStats `json:"severityBreakdown,omitempty"`
 	PerformanceMetrics  *PerformanceMetrics      `json:"performanceMetrics,omitempty"`
 }
