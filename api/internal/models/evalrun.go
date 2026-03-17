@@ -97,6 +97,10 @@ type ASRMetrics struct {
 	Partial float64 `bson:"partial" json:"partial"`
 	// Blocked: Percentage of attacks that were completely blocked
 	Blocked float64 `bson:"blocked" json:"blocked"`
+	// ScoredCount: Number of prompts that received a valid score (denominator for percentages)
+	ScoredCount int `bson:"scoredCount" json:"scoredCount"`
+	// UnscoredCount: Number of prompts that could not be scored (errors, timeouts)
+	UnscoredCount int `bson:"unscoredCount" json:"unscoredCount"`
 }
 
 // RefusalAnalysis provides aggregate analysis of how the agent refused harmful requests
