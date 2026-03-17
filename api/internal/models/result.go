@@ -13,10 +13,20 @@ type EvalResultsSummary struct {
 	AgentID            string                   `bson:"agentId" json:"agentId"`
 	Failures           []PromptResultDetail     `bson:"failures" json:"failures"`
 	SamplePasses       []PromptResultDetail     `bson:"samplePasses" json:"samplePasses"`
+	Errors             []EvalErrorDetail        `bson:"errors,omitempty" json:"errors,omitempty"`
 	CategoryBreakdown  map[string]CategoryStats `bson:"categoryBreakdown" json:"categoryBreakdown"`
 	SeverityBreakdown  map[string]CategoryStats `bson:"severityBreakdown,omitempty" json:"severityBreakdown,omitempty"`
 	PerformanceMetrics PerformanceMetrics       `bson:"performanceMetrics" json:"performanceMetrics"`
 	CreatedAt          time.Time                `bson:"createdAt" json:"createdAt"`
+}
+
+// EvalErrorDetail holds information about a prompt that errored during evaluation
+type EvalErrorDetail struct {
+	PromptID     string `bson:"promptId,omitempty" json:"promptId,omitempty"`
+	DatasetID    string `bson:"datasetId,omitempty" json:"datasetId,omitempty"`
+	Category     string `bson:"category,omitempty" json:"category,omitempty"`
+	ErrorType    string `bson:"errorType,omitempty" json:"errorType,omitempty"`
+	ErrorMessage string `bson:"errorMessage" json:"errorMessage"`
 }
 
 // ConversationMessage represents a single message in a conversation
