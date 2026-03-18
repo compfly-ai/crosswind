@@ -13,6 +13,7 @@ type EvalResultsSummary struct {
 	AgentID            string                   `bson:"agentId" json:"agentId"`
 	Failures           []PromptResultDetail     `bson:"failures" json:"failures"`
 	SamplePasses       []PromptResultDetail     `bson:"samplePasses" json:"samplePasses"`
+	Uncertains         []PromptResultDetail     `bson:"uncertains,omitempty" json:"uncertains,omitempty"`
 	Errors             []EvalErrorDetail        `bson:"errors,omitempty" json:"errors,omitempty"`
 	CategoryBreakdown  map[string]CategoryStats `bson:"categoryBreakdown" json:"categoryBreakdown"`
 	SeverityBreakdown  map[string]CategoryStats `bson:"severityBreakdown,omitempty" json:"severityBreakdown,omitempty"`
@@ -39,7 +40,7 @@ type ConversationMessage struct {
 type PromptResultDetail struct {
 	RunID               string    `bson:"runId,omitempty" json:"runId,omitempty"`
 	AgentID             string    `bson:"agentId,omitempty" json:"agentId,omitempty"`
-	Verdict             string    `bson:"verdict,omitempty" json:"verdict,omitempty"` // pass, fail, error
+	Verdict             string    `bson:"verdict,omitempty" json:"verdict,omitempty"` // pass, fail, uncertain, error
 	PromptID            string    `bson:"promptId" json:"promptId"`
 	DatasetID           string    `bson:"datasetId" json:"datasetId"`
 	Category            string    `bson:"category" json:"category"`
@@ -233,6 +234,7 @@ type GetResultsResponse struct {
 	Recommendations     []Recommendation         `json:"recommendations,omitempty"`
 	Failures            []PromptResultDetail     `json:"failures,omitempty"`
 	SamplePasses        []PromptResultDetail     `json:"samplePasses,omitempty"`
+	Uncertains          []PromptResultDetail     `json:"uncertains,omitempty"`
 	CategoryBreakdown   map[string]CategoryStats `json:"categoryBreakdown,omitempty"`
 	SeverityBreakdown   map[string]CategoryStats `json:"severityBreakdown,omitempty"`
 	PerformanceMetrics  *PerformanceMetrics      `json:"performanceMetrics,omitempty"`

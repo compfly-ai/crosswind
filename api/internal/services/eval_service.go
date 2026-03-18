@@ -324,6 +324,7 @@ func (s *EvalService) GetResults(ctx context.Context, runID string) (*models.Get
 	// Results from restricted datasets will have content redacted or excluded
 	filteredFailures := models.FilterResultsByVisibility(results.Failures)
 	filteredPasses := models.FilterResultsByVisibility(results.SamplePasses)
+	filteredUncertains := models.FilterResultsByVisibility(results.Uncertains)
 
 	return &models.GetResultsResponse{
 		RunID:                runID,
@@ -336,6 +337,7 @@ func (s *EvalService) GetResults(ctx context.Context, runID string) (*models.Get
 		Recommendations:      run.Recommendations,
 		Failures:             filteredFailures,
 		SamplePasses:         filteredPasses,
+		Uncertains:           filteredUncertains,
 		CategoryBreakdown:    results.CategoryBreakdown,
 		PerformanceMetrics:   &results.PerformanceMetrics,
 	}, nil

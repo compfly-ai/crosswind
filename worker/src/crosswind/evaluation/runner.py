@@ -1237,6 +1237,8 @@ class EvalRunner:
                     "failures": [],
                     "errors": [],
                     "samplePasses": [],
+                    "uncertains": [],
+                    "totalUncertains": 0,
                     "categoryBreakdown": {},
                     "performanceMetrics": {},
                     "errorSummary": {},
@@ -1280,6 +1282,8 @@ class EvalRunner:
             await self._store_failure(result)
         elif result.judgment.result == JudgmentResult.PASS:
             await self._store_sample_pass(result)
+        elif result.judgment.result == JudgmentResult.UNCERTAIN:
+            await self._store_uncertain(result)
         elif result.judgment.result == JudgmentResult.ERROR:
             await self._store_error(result)
 
@@ -1357,6 +1361,40 @@ class EvalRunner:
 
         await self.db.evalResultsSummary.update_one(
             {"runId": self.run_id}, {"$push": {"samplePasses": pass_doc}}
+        )
+
+    async def _store_uncertain(self, result: PromptResult) -> None:
+        """Store an uncertain result for review."""
+        content = result.prompt.content
+        if isinstance(content, list):
+            content = " -> ".join([t.content for t in content])
+
+        uncertain_doc = {
+            "promptId": result.prompt.prompt_id,
+            "datasetId": result.prompt.dataset_id,
+            "category": result.prompt.category,
+            "attackType": result.prompt.attack_type,
+            "severity": result.prompt.severity.value,
+            "prompt": content,
+            "response": result.response.content if result.response else "",
+            "judgment": result.judgment.result.value,
+            "judgmentConfidence": result.judgment.confidence,
+            "judgmentReasoning": result.judgment.reasoning,
+            "judgeModel": result.judgment.judge_model,
+            "turnNumber": result.turn_number,
+            "responseLatencyMs": result.response.latency_ms if result.response else 0,
+            "timestamp": datetime.utcnow(),
+            "visibility": result.prompt.visibility,
+            "owaspAsiThreat": result.prompt.owasp_asi_threat,
+            "maestroThreat": result.prompt.maestro_threat,
+        }
+
+        await self.db.evalResultsSummary.update_one(
+            {"runId": self.run_id},
+            {
+                "$push": {"uncertains": uncertain_doc},
+                "$inc": {"totalUncertains": 1},
+            },
         )
 
     async def _store_error(self, result: PromptResult) -> None:
@@ -1745,9 +1783,17 @@ class EvalRunner:
         if not self.results:
             return None
 
-        total = len(self.results)
-        full_success = sum(1 for r in self.results if r.judgment.attack_success == AttackSuccess.FULL)
-        partial_success = sum(1 for r in self.results if r.judgment.attack_success == AttackSuccess.PARTIAL)
+        # Exclude UNCERTAIN and ERROR — they're judgment failures, not security outcomes
+        scored_results = [
+            r for r in self.results
+            if r.judgment.result not in (JudgmentResult.UNCERTAIN, JudgmentResult.ERROR)
+        ]
+        total = len(scored_results)
+        if total == 0:
+            return None
+
+        full_success = sum(1 for r in scored_results if r.judgment.attack_success == AttackSuccess.FULL)
+        partial_success = sum(1 for r in scored_results if r.judgment.attack_success == AttackSuccess.PARTIAL)
         blocked = total - full_success - partial_success
 
         # ASR = (full + partial) / total
@@ -1755,7 +1801,7 @@ class EvalRunner:
 
         # By severity
         by_severity: dict[str, dict[str, int]] = {}
-        for result in self.results:
+        for result in scored_results:
             sev = result.prompt.severity.value
             if sev not in by_severity:
                 by_severity[sev] = {"total": 0, "full": 0, "partial": 0}
@@ -1780,6 +1826,7 @@ class EvalRunner:
             "fullSuccessCount": full_success,
             "partialSuccessCount": partial_success,
             "blockedCount": blocked,
+            "unscoredCount": len(self.results) - total,
         }
 
     def _calculate_refusal_analysis(self) -> dict[str, Any] | None:
