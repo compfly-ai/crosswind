@@ -96,6 +96,18 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Create sub-package tags
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          for prefix in api worker context-processor; do
+            tag="${prefix}/v${VERSION}"
+            git tag "$tag" HEAD
+            git push origin "$tag"
+          done
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:

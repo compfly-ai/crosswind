@@ -193,7 +193,7 @@ type InferredAPISchema struct {
 	// "chat_stateless" - Full history sent each request as messages array [{role, content}...] (OpenAI/Claude style)
 	// "single_message" - Single message string per request, server may track context via session_id
 	// "thread_based"   - Messages added to server-managed thread (OpenAI Assistants style)
-	// "task_based"     - Task-oriented with contextId grouping (Google A2A style)
+	// "task_based"     - Async run: POST creates run → GET SSE stream for response (OpenAI Assistants, LangGraph Platform style)
 	//
 	// Framework-specific styles:
 	// "langserve"  - LangChain LangServe: {input: {key: value}, config: {...}} with /invoke, /stream endpoints
@@ -217,9 +217,21 @@ type InferredAPISchema struct {
 	StreamingSupported   bool   `bson:"streamingSupported" json:"streamingSupported"`
 
 	// Session management
-	SessionIDInResponse  string `bson:"sessionIdInResponse,omitempty" json:"sessionIdInResponse,omitempty"`
-	SessionIDInHeader    string `bson:"sessionIdInHeader,omitempty" json:"sessionIdInHeader,omitempty"`
-	SessionCreateMethod  string `bson:"sessionCreateMethod,omitempty" json:"sessionCreateMethod,omitempty"` // "auto", "explicit", "none"
+	SessionIDInResponse string `bson:"sessionIdInResponse,omitempty" json:"sessionIdInResponse,omitempty"`
+	SessionIDInHeader   string `bson:"sessionIdInHeader,omitempty" json:"sessionIdInHeader,omitempty"`
+	SessionCreateMethod string `bson:"sessionCreateMethod,omitempty" json:"sessionCreateMethod,omitempty"` // "auto", "explicit", "none"
+
+	// Task-based / async run pattern (POST create → stream SSE response)
+	// Used when apiStyle is "task_based" and the agent uses a two-step flow:
+	// 1. POST to conversation endpoint → returns run/task ID
+	// 2. GET or POST stream endpoint with run ID → SSE event stream with response
+	RunIDField      string `bson:"runIdField,omitempty" json:"runIdField,omitempty"`           // JSON path to extract run ID from POST response (e.g., "runId")
+	StreamEndpoint  string `bson:"streamEndpoint,omitempty" json:"streamEndpoint,omitempty"`   // Endpoint pattern for SSE stream (e.g., "/v1/runs/{runId}/stream")
+	StreamMethod    string `bson:"streamMethod,omitempty" json:"streamMethod,omitempty"`       // HTTP method for stream endpoint: "GET" (default) or "POST"
+	StreamBody      map[string]interface{} `bson:"streamBody,omitempty" json:"streamBody,omitempty"` // Static body for POST streams (e.g., JSON-RPC envelope)
+	SSEContentType  string `bson:"sseContentType,omitempty" json:"sseContentType,omitempty"`   // SSE data type containing text (e.g., "text.delta")
+	SSEContentField string `bson:"sseContentField,omitempty" json:"sseContentField,omitempty"` // JSON path within SSE data for text content (e.g., "text")
+	SSEDoneType     string `bson:"sseDoneType,omitempty" json:"sseDoneType,omitempty"`         // SSE data type signaling completion (e.g., "run.completed")
 
 	// Metadata
 	InferredAt      time.Time `bson:"inferredAt" json:"inferredAt"`

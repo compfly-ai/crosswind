@@ -1,5 +1,6 @@
 """OpenAPI HTTP protocol adapter."""
 
+import json
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -67,6 +68,15 @@ class InferredSchema:
     session_id_in_header: str | None = None
     session_create_method: str = "none"
 
+    # Task-based / async run pattern (POST create → stream SSE response)
+    run_id_field: str | None = None       # JSON path to extract run ID from POST response
+    stream_endpoint: str | None = None    # Endpoint pattern (e.g., "/v1/runs/{runId}/stream")
+    stream_method: str = "GET"            # HTTP method for stream endpoint: "GET" or "POST"
+    stream_body: dict[str, Any] | None = None  # Static body for POST streams (e.g., JSON-RPC envelope)
+    sse_content_type: str | None = None   # SSE data "type" field containing text (e.g., "text.delta")
+    sse_content_field: str | None = None  # JSON path within SSE data for text (e.g., "text")
+    sse_done_type: str | None = None      # SSE data "type" signaling completion (e.g., "run.completed")
+
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "InferredSchema | None":
         """Create from dictionary (MongoDB document)."""
@@ -96,6 +106,13 @@ class InferredSchema:
             session_id_in_response=data.get("sessionIdInResponse"),
             session_id_in_header=data.get("sessionIdInHeader"),
             session_create_method=data.get("sessionCreateMethod", "none"),
+            run_id_field=data.get("runIdField"),
+            stream_endpoint=data.get("streamEndpoint"),
+            stream_method=data.get("streamMethod", "GET"),
+            stream_body=data.get("streamBody"),
+            sse_content_type=data.get("sseContentType"),
+            sse_content_field=data.get("sseContentField"),
+            sse_done_type=data.get("sseDoneType"),
         )
 
 
@@ -320,6 +337,10 @@ class OpenAPIHttpAdapter(ProtocolAdapter):
 
     async def send_message(self, request: ConversationRequest) -> ConversationResponse:
         """Send a message and get response."""
+        # Route to task-based handler for async run pattern
+        if self.schema and self.schema.api_style == API_STYLE_TASK_BASED:
+            return await self._send_task_based(request)
+
         start_time = time.monotonic()
 
         payload = self._build_payload(request)
@@ -401,6 +422,159 @@ class OpenAPIHttpAdapter(ProtocolAdapter):
 
         return request_session_id or str(uuid4())
 
+    async def _send_task_based(self, request: ConversationRequest) -> ConversationResponse:
+        """Handle async run pattern: POST to create run, GET SSE stream for response.
+
+        Two-step flow used by modern agent APIs (OpenAI Assistants, LangGraph Platform, etc.):
+        1. POST to conversation endpoint with message → returns run/task ID + session ID
+        2. GET stream endpoint with run ID → SSE event stream containing response chunks
+        """
+        start_time = time.monotonic()
+
+        if not self.schema or not self.schema.run_id_field or not self.schema.stream_endpoint:
+            raise ValueError(
+                "task_based API style requires runIdField and streamEndpoint in inferred schema"
+            )
+
+        # Step 1: POST to create the run
+        payload = self._build_payload(request)
+        url = f"{self.base_url}{self.conversation_endpoint}"
+        headers = self._build_request_headers(request.session_id)
+        if request.extra_headers:
+            headers.update(request.extra_headers)
+
+        logger.debug(
+            "Task-based: creating run",
+            url=url,
+            session_id=request.session_id,
+        )
+
+        response = await self.client.post(
+            url,
+            json=payload,
+            headers=headers,
+            timeout=request.timeout_seconds,
+        )
+
+        if response.status_code not in (200, 201, 202):
+            raise HTTPAgentError(
+                status_code=response.status_code,
+                message=f"Run creation failed: HTTP {response.status_code}: {response.reason_phrase}",
+                url=url,
+            )
+
+        create_data = response.json()
+
+        # Extract run ID
+        run_id = self._extract_by_path(create_data, self.schema.run_id_field)
+        if not run_id:
+            raise ValueError(
+                f"Could not extract run ID from response using path '{self.schema.run_id_field}'. "
+                f"Response: {json.dumps(create_data)[:200]}"
+            )
+        run_id = str(run_id)
+
+        # Extract session ID from create response
+        session_id = self._resolve_session_id(
+            request.session_id, create_data, response.headers
+        )
+
+        logger.debug(
+            "Task-based: run created, streaming response",
+            run_id=run_id,
+            session_id=session_id,
+        )
+
+        # Step 2: Stream SSE to collect response (GET or POST)
+        stream_path = self.schema.stream_endpoint.replace("{runId}", run_id)
+        stream_url = f"{self.base_url}{stream_path}"
+        stream_headers = self._build_request_headers(session_id)
+        stream_method = (self.schema.stream_method or "GET").upper()
+
+        content_parts: list[str] = []
+        raw_events: list[dict] = []
+
+        # Build stream request kwargs
+        stream_kwargs: dict[str, Any] = {
+            "headers": stream_headers,
+            "timeout": request.timeout_seconds or self.timeout,
+        }
+        if stream_method == "POST" and self.schema.stream_body:
+            stream_kwargs["json"] = self.schema.stream_body
+
+        async with self.client.stream(
+            stream_method,
+            stream_url,
+            **stream_kwargs,
+        ) as stream:
+            if stream.status_code != 200:
+                raise HTTPAgentError(
+                    status_code=stream.status_code,
+                    message=f"Stream request failed: HTTP {stream.status_code}",
+                    url=stream_url,
+                )
+
+            async for line in stream.aiter_lines():
+                if not line.startswith("data: "):
+                    continue
+
+                data_str = line[6:]
+                if data_str == "[DONE]":
+                    break
+
+                try:
+                    event = json.loads(data_str)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+
+                event_type = event.get("type", "")
+                raw_events.append(event)
+
+                # Check for completion
+                if self.schema.sse_done_type and event_type == self.schema.sse_done_type:
+                    break
+
+                # Check for error events
+                if "error" in event_type or "failed" in event_type:
+                    error_msg = event.get("message") or event.get("error") or str(event)
+                    raise RuntimeError(f"Agent run failed: {error_msg}")
+
+                # Extract content from matching event type
+                if self.schema.sse_content_type and event_type == self.schema.sse_content_type:
+                    if self.schema.sse_content_field:
+                        text = self._extract_by_path(event, self.schema.sse_content_field)
+                    else:
+                        text = event.get("text") or event.get("content") or event.get("data")
+                    if text:
+                        content_parts.append(str(text))
+                elif not self.schema.sse_content_type:
+                    # No specific content type configured — try common fields
+                    text = event.get("text") or event.get("content") or event.get("delta")
+                    if text:
+                        content_parts.append(str(text))
+
+        latency_ms = int((time.monotonic() - start_time) * 1000)
+        content = "".join(content_parts)
+
+        logger.debug(
+            "Task-based: response collected",
+            run_id=run_id,
+            latency_ms=latency_ms,
+            chunks=len(content_parts),
+            content_length=len(content),
+        )
+
+        return ConversationResponse(
+            session_id=session_id,
+            content=content,
+            latency_ms=latency_ms,
+            raw_response={
+                "run_id": run_id,
+                "create_response": create_data,
+                "event_count": len(raw_events),
+            },
+        )
+
     async def send_message_streaming(
         self, request: ConversationRequest
     ) -> AsyncIterator[str]:
@@ -425,7 +599,6 @@ class OpenAPIHttpAdapter(ProtocolAdapter):
                         if data == "[DONE]":
                             break
                         try:
-                            import json
                             chunk = json.loads(data)
                             if "choices" in chunk:
                                 delta = chunk["choices"][0].get("delta", {})

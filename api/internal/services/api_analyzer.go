@@ -242,10 +242,11 @@ Framework styles:
 - haystack: {query: "...", params: {...}} (Haystack pipeline)
 - botpress: {conversationId, payload: {text: "..."}} (Botpress)
 - thread_based: /threads/{id}/messages path (OpenAI Assistants)
-- task_based: JSON-RPC with contextId (Google A2A)
+- task_based: POST creates run → GET SSE stream (response has runId/streamUrl, no content)
 
 ## OUTPUT FORMAT
 
+For most styles:
 {
   "apiStyle": "chat_stateless",
   "requestMethod": "POST",
@@ -259,6 +260,23 @@ Framework styles:
   "confidence": 0.95
 }
 
+For task_based (include additional fields):
+{
+  "apiStyle": "task_based",
+  "messageField": "message",
+  "sessionIdField": "sessionId",
+  "sessionIdInResponse": "sessionId",
+  "sessionCreateMethod": "auto",
+  "streamingSupported": true,
+  "runIdField": "runId",
+  "streamEndpoint": "/v1/runs/{runId}/stream",
+  "streamMethod": "GET",
+  "sseContentType": "text.delta",
+  "sseContentField": "text",
+  "sseDoneType": "run.completed",
+  "confidence": 0.85
+}
+
 ## FIELD RULES
 
 | Style | messageField | responseContentField |
@@ -268,6 +286,7 @@ Framework styles:
 | langserve | "input" | "output" |
 | flowise | "question" | "text" |
 | dify | "inputs"/"query" | "answer" |
+| task_based | "message" | (N/A — content from SSE stream) |
 
 Use dot notation: "choices[0].message.content"
 
@@ -330,6 +349,9 @@ func (a *APIAnalyzer) probeEndpoint(ctx context.Context, agent *models.Agent) (m
 		{"message": "Hello"},
 		{"prompt": "Hello"},
 		{"query": "Hello"},
+
+		// Async run pattern (task_based) — POST returns runId/streamUrl instead of content
+		{"message": "Hello", "sessionId": "probe-session"},
 
 		// LangServe style
 		{"input": map[string]string{"message": "Hello"}},
@@ -501,18 +523,30 @@ Example request:
 Example response:
   {"responses": [{"type": "text", "payload": {"text": "Hi!"}}]}
 
-### RARE STYLES (flag but may need manual config)
+### ASYNC STYLES
 
 #### 8. thread_based (OpenAI Assistants style)
 - Messages added to server-managed thread via separate endpoint
 Detection: URL contains /threads/ path
 
-#### 9. task_based (Google A2A style)
-- Task-oriented with contextId, uses JSON-RPC
-Detection: Request has "jsonrpc" field or contextId/taskId structure
+#### 9. task_based (Async Run / SSE stream pattern)
+- POST to create a run/task → response contains runId + streamUrl (NO direct content)
+- GET the stream URL → SSE event stream delivers response as typed events
+- Used by: OpenAI Assistants, LangGraph Platform, custom agents with long-running operations
+Detection: POST response contains "runId"/"taskId"/"id" AND "streamUrl"/"stream_url"/"streamPath" but NO assistant content
+Example request:
+  {"message": "Hello", "sessionId": "abc123"}
+Example POST response (201):
+  {"runId": "run_abc123", "sessionId": "abc123", "streamUrl": "/v1/runs/run_abc123/stream"}
+Example SSE stream:
+  data: {"type": "text.delta", "text": "Hello"}
+  data: {"type": "text.delta", "text": " there!"}
+  data: {"type": "run.completed", "summary": "Done", "durationMs": 1200}
+IMPORTANT: If the POST response has a run/task ID and a stream URL but no actual text content, this is task_based. Do NOT classify it as single_message.
 
 ## OUTPUT FORMAT
 
+For most styles:
 {
   "apiStyle": "chat_stateless",
   "requestMethod": "POST",
@@ -527,6 +561,26 @@ Detection: Request has "jsonrpc" field or contextId/taskId structure
   "reasoning": "Brief explanation of detection"
 }
 
+For task_based style (additional fields required):
+{
+  "apiStyle": "task_based",
+  "requestMethod": "POST",
+  "requestContentType": "application/json",
+  "messageField": "message",
+  "sessionIdField": "sessionId",
+  "sessionIdInResponse": "sessionId",
+  "sessionCreateMethod": "auto",
+  "streamingSupported": true,
+  "runIdField": "runId",
+  "streamEndpoint": "/v1/runs/{runId}/stream",
+  "streamMethod": "GET",
+  "sseContentType": "text.delta",
+  "sseContentField": "text",
+  "sseDoneType": "run.completed",
+  "confidence": 0.85,
+  "reasoning": "POST returns runId + streamUrl, no content — async run pattern"
+}
+
 ## FIELD RULES BY API STYLE
 
 | Style | messageField | sessionIdField | responseContentField |
@@ -538,6 +592,20 @@ Detection: Request has "jsonrpc" field or contextId/taskId structure
 | dify | "inputs" or "query" | "conversation_id" | "answer" |
 | haystack | "query" | "" | "answers[0]" |
 | botpress | "payload.text" | "conversationId" | "responses[0].payload.text" |
+| task_based | "message" | "sessionId" | (N/A — content from SSE stream) |
+
+## TASK_BASED FIELD RULES
+
+When apiStyle is "task_based", you MUST include these additional fields:
+- runIdField: JSON path to extract run/task ID from POST response (e.g., "runId", "id", "taskId")
+- streamEndpoint: endpoint pattern with {runId} placeholder (e.g., "/v1/runs/{runId}/stream")
+- streamMethod: "GET" (most common) or "POST" (e.g., A2A sendSubscribe, JSON-RPC streaming)
+- sseContentType: the "type" field in SSE JSON data that carries text chunks (e.g., "text.delta", "content.delta")
+- sseContentField: JSON field within that event holding the text (e.g., "text", "content", "delta")
+- sseDoneType: the "type" field in SSE JSON data signaling completion (e.g., "run.completed", "done")
+
+Determining streamMethod: If the stream URL pattern looks like a resource path (e.g., /runs/{runId}/stream), use GET.
+If it looks like an RPC call (e.g., /tasks/sendSubscribe) or requires a request body, use POST.
 
 ## RESPONSE FIELD PATHS
 
@@ -585,7 +653,8 @@ Conversation Endpoint: %s%s
 Based on the probe results, determine:
 1. The correct request/response format
 2. How sessions are managed for multi-turn conversations
-3. Whether conversation history should be sent in requests`,
+3. Whether conversation history should be sent in requests
+4. Whether the response contains a run/task ID + stream URL instead of direct content (task_based pattern)`,
 		agent.Name,
 		agent.Description,
 		agent.EndpointConfig.Endpoint,
