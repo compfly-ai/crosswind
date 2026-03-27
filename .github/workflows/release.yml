@@ -84,8 +84,8 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-api:${{ steps.version.outputs.version }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-api:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
 
       - name: Build and push Worker
         uses: docker/build-push-action@v6
@@ -95,8 +95,8 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-worker:${{ steps.version.outputs.version }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-worker:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=worker
+          cache-to: type=gha,mode=max,scope=worker
 
       - name: Build and push Context Processor
         uses: docker/build-push-action@v6
@@ -106,8 +106,8 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-context-processor:${{ steps.version.outputs.version }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-context-processor:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=context-processor
+          cache-to: type=gha,mode=max,scope=context-processor
 
       - name: Create sub-package tags
         env:

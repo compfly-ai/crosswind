@@ -101,11 +101,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Build API
-        run: docker build ./api
+        uses: docker/build-push-action@v6
+        with:
+          context: ./api
+          push: false
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
 
       - name: Build Worker
-        run: docker build ./worker
+        uses: docker/build-push-action@v6
+        with:
+          context: ./worker
+          push: false
+          cache-from: type=gha,scope=worker
+          cache-to: type=gha,mode=max,scope=worker
 
       - name: Build Context Processor
-        run: docker build ./context-processor
+        uses: docker/build-push-action@v6
+        with:
+          context: ./context-processor
+          push: false
+          cache-from: type=gha,scope=context-processor
+          cache-to: type=gha,mode=max,scope=context-processor
