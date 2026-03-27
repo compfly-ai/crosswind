@@ -7,8 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        required: true
+        required: false
         type: string
+        description: "Version to release (e.g. v0.1.16). If empty, auto-increments patch from latest tag."
 
 env:
   REGISTRY: ghcr.io
@@ -43,11 +44,23 @@ jobs:
           REF_NAME: ${{ github.ref_name }}
         run: |
           if [[ "$EVENT" == "workflow_dispatch" ]]; then
-            if [[ -z "$INPUT_VERSION" ]]; then
-              echo "version input is required for manual runs" >&2
-              exit 1
+            if [[ -n "$INPUT_VERSION" ]]; then
+              VERSION="$INPUT_VERSION"
+            else
+              # Auto-increment: find latest semver tag and bump patch
+              LATEST_TAG=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)
+              if [[ -z "$LATEST_TAG" ]]; then
+                echo "No existing semver tags found; cannot auto-increment" >&2
+                exit 1
+              fi
+              # Strip v prefix, split, bump patch
+              SEMVER="${LATEST_TAG#v}"
+              MAJOR=$(echo "$SEMVER" | cut -d. -f1)
+              MINOR=$(echo "$SEMVER" | cut -d. -f2)
+              PATCH=$(echo "$SEMVER" | cut -d. -f3)
+              VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
+              echo "Auto-incremented from $LATEST_TAG to v$VERSION"
             fi
-            VERSION="$INPUT_VERSION"
           else
             # For tag pushes, github.ref_name will be the tag name, e.g. v0.1.9
             VERSION="$REF_NAME"
