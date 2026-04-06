@@ -597,7 +597,7 @@ func (s *AgentService) UpdateInferredSchema(ctx context.Context, agentID string,
 func isValidProtocol(protocol string) bool {
 	switch protocol {
 	// Platform protocols (use native SDKs)
-	case models.ProtocolOpenAI, models.ProtocolAzureOpenAI,
+	case models.ProtocolOpenAI, models.ProtocolAzureOpenAI, models.ProtocolAzureFoundry,
 		models.ProtocolLangGraph, models.ProtocolBedrock, models.ProtocolBedrockAgentCore, models.ProtocolVertex:
 		return true
 	// Generic protocols (custom HTTP adapters)

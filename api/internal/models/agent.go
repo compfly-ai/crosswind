@@ -254,6 +254,7 @@ const (
 	ProtocolBedrock          = "bedrock"          // AWS Bedrock Agents
 	ProtocolBedrockAgentCore = "bedrockagentcore" // AWS Bedrock AgentCore Runtime
 	ProtocolVertex           = "vertex"           // Google Vertex AI Agent Engine
+	ProtocolAzureFoundry     = "azure_foundry"   // Azure AI Foundry Agents
 
 	// Generic protocols (custom HTTP adapters)
 	ProtocolCustom   = "custom"    // Generic HTTP API
