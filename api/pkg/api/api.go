@@ -143,6 +143,7 @@ const (
 	// Protocol types
 	ProtocolOpenAI           = models.ProtocolOpenAI
 	ProtocolAzureOpenAI      = models.ProtocolAzureOpenAI
+	ProtocolAzureFoundry     = models.ProtocolAzureFoundry
 	ProtocolLangGraph        = models.ProtocolLangGraph
 	ProtocolBedrock          = models.ProtocolBedrock
 	ProtocolBedrockAgentCore = models.ProtocolBedrockAgentCore
