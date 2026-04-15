@@ -10,8 +10,8 @@ type A2AAgentCard struct {
 	Provider        A2AProvider         `json:"provider"`                  // REQUIRED: Publisher/maintainer information
 	Capabilities    A2ACapabilities     `json:"capabilities"`              // REQUIRED: Feature support declaration
 	Interfaces      []A2AInterface      `json:"interfaces"`                // REQUIRED: Supported protocol bindings
-	SecuritySchemes []A2ASecurityScheme `json:"securitySchemes,omitempty"` // REQUIRED: Authentication methods
-	Security        map[string][]string `json:"security,omitempty"`        // REQUIRED: Security requirements mapping
+	SecuritySchemes map[string]A2ASecurityScheme `json:"securitySchemes,omitempty"` // REQUIRED: Authentication methods keyed by scheme name
+	Security        []map[string][]string        `json:"security,omitempty"`        // REQUIRED: List of security requirement sets (each maps scheme name -> scopes)
 
 	// Optional fields
 	Description               string                 `json:"description,omitempty"`               // OPTIONAL: Agent purpose/capabilities summary

@@ -291,10 +291,28 @@ func (s *AgentService) populateFromA2AAgentCard(ctx context.Context, req *models
 		}
 	}
 
-	// Extract auth config from security schemes (only if not already provided)
+	// Extract auth config from security schemes (only if not already provided).
+	// Prefer a scheme listed in the first security requirement; fall back to any defined scheme.
 	if req.AuthConfig.Type == "" || req.AuthConfig.Type == "none" {
-		if len(agentCard.SecuritySchemes) > 0 {
-			scheme := agentCard.SecuritySchemes[0]
+		var scheme models.A2ASecurityScheme
+		var found bool
+		if len(agentCard.Security) > 0 {
+			for schemeName := range agentCard.Security[0] {
+				if s, ok := agentCard.SecuritySchemes[schemeName]; ok {
+					scheme = s
+					found = true
+					break
+				}
+			}
+		}
+		if !found {
+			for _, s := range agentCard.SecuritySchemes {
+				scheme = s
+				found = true
+				break
+			}
+		}
+		if found {
 			switch scheme.Type {
 			case "apiKey":
 				req.AuthConfig.Type = models.AuthTypeAPIKey
