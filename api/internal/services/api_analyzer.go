@@ -719,7 +719,10 @@ func cleanJSONResponse(content string) string {
 	content = strings.TrimPrefix(content, "```json")
 	content = strings.TrimPrefix(content, "```")
 	content = strings.TrimSuffix(content, "```")
-	return strings.TrimSpace(content)
+	content = strings.TrimSpace(content)
+	content = strings.ReplaceAll(content, `"true"`, `true`)
+	content = strings.ReplaceAll(content, `"false"`, `false`)
+	return content
 }
 
 // truncateSpec truncates OpenAPI spec for prompt
