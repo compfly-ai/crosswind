@@ -70,6 +70,8 @@ type EvalProgress struct {
 	ErrorPrompts       int       `bson:"errorPrompts" json:"errorPrompts"`
 	CurrentDataset     string    `bson:"currentDataset" json:"currentDataset"`
 	CurrentSession     string    `bson:"currentSession" json:"currentSession"`
+	Phase              string    `bson:"stage,omitempty" json:"phase,omitempty"`           // scenario_generation | agent_profiling | evaluation | finalizing
+	StatusMessage      string    `bson:"message,omitempty" json:"statusMessage,omitempty"` // Human-readable progress description
 	LastUpdated        time.Time `bson:"lastUpdated" json:"lastUpdated"`
 	CompletedPromptIds   []string       `bson:"completedPromptIds,omitempty" json:"-"`
 	CheckpointCounters   map[string]int `bson:"checkpointCounters,omitempty" json:"-"`
