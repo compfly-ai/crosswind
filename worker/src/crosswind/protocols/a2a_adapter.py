@@ -290,16 +290,27 @@ class A2AAdapter(ProtocolAdapter):
             parts = result.get("parts", [])
             return self._extract_text_from_parts(parts)
 
-        # Task response - extract from artifacts or status
         if result.get("kind") == "task":
-            artifacts = result.get("artifacts", [])
-            for artifact in artifacts:
-                parts = artifact.get("parts", [])
-                text = self._extract_text_from_parts(parts)
+            for artifact in result.get("artifacts", []):
+                text = self._extract_text_from_parts(artifact.get("parts", []))
                 if text:
                     return text
 
-            state = result.get("state", "")
+            status = result.get("status", {})
+            status_msg = status.get("message") or {}
+            text = self._extract_text_from_parts(status_msg.get("parts", []))
+            if text:
+                return text
+
+            history = result.get("history", [])
+            for entry in reversed(history):
+                if entry.get("role") not in ("agent", "assistant"):
+                    continue
+                text = self._extract_text_from_parts(entry.get("parts", []))
+                if text:
+                    return text
+
+            state = status.get("state", "")
             return f"[Task {result.get('taskId', 'unknown')}: {state}]"
 
         # Error response
