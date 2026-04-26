@@ -39,6 +39,15 @@ def create_adapter(agent_doc: dict[str, Any]) -> ProtocolAdapter:
     auth_config = agent_doc.get("authConfig", {})
     protocol = endpoint_config.get("protocol", "custom")
 
+    # Resolve effective protocol: if declared A2A but analysis determined REST, use custom
+    if protocol == "a2a":
+        inferred = agent_doc.get("inferredSchema") or {}
+        api_style = inferred.get("apiStyle", "")
+        if api_style and api_style != "a2a":
+            protocol = "custom"
+            if not endpoint_config.get("endpoint"):
+                endpoint_config["endpoint"] = endpoint_config.get("a2aEndpoint", "")
+
     # Decrypt credentials (they're encrypted in MongoDB)
     encrypted_creds = auth_config.get("credentials", "")
     decrypted_creds = decrypt_credentials(encrypted_creds) if encrypted_creds else ""
