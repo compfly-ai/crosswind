@@ -279,28 +279,53 @@ class A2AAdapter(ProtocolAdapter):
     def _is_task_response(self, response_data: dict[str, Any]) -> bool:
         """Check if response is a task (async) vs direct message."""
         result = response_data.get("result", {})
-        return bool(result.get("kind") == "task")
+        # v0.3: result.kind == "task"; v1.0 dropped the discriminator and uses
+        # a OneOf where presence of `task` (a dict) implies a task response.
+        return result.get("kind") == "task" or isinstance(result.get("task"), dict)
 
     def _extract_content(self, response_data: dict[str, Any]) -> str:
         """Extract text content from A2A response."""
         result = response_data.get("result", {})
 
+        # v0.3 carries a `kind` discriminator on result; v1.0 dropped it and
+        # uses a OneOf where the inner type is the field name (`task` /
+        # `message`). Unwrap so the v0.3 dispatch below covers both shapes.
+        kind = result.get("kind", "")
+        if not kind:
+            if isinstance(result.get("task"), dict):
+                result = result["task"]
+                kind = "task"
+            elif isinstance(result.get("message"), dict):
+                result = result["message"]
+                kind = "message"
+
         # Direct message response
-        if result.get("kind") == "message":
+        if kind == "message":
             parts = result.get("parts", [])
             return self._extract_text_from_parts(parts)
 
-        # Task response - extract from artifacts or status
-        if result.get("kind") == "task":
-            artifacts = result.get("artifacts", [])
-            for artifact in artifacts:
-                parts = artifact.get("parts", [])
-                text = self._extract_text_from_parts(parts)
+        if kind == "task":
+            for artifact in result.get("artifacts", []):
+                text = self._extract_text_from_parts(artifact.get("parts", []))
                 if text:
                     return text
 
-            state = result.get("state", "")
-            return f"[Task {result.get('taskId', 'unknown')}: {state}]"
+            status = result.get("status", {})
+            status_msg = status.get("message") or {}
+            text = self._extract_text_from_parts(status_msg.get("parts", []))
+            if text:
+                return text
+
+            history = result.get("history", [])
+            for entry in reversed(history):
+                if entry.get("role") not in ("agent", "assistant"):
+                    continue
+                text = self._extract_text_from_parts(entry.get("parts", []))
+                if text:
+                    return text
+
+            state = status.get("state", "")
+            return f"[Task {result.get('id', 'unknown')}: {state}]"
 
         # Error response
         error = response_data.get("error")
@@ -310,12 +335,35 @@ class A2AAdapter(ProtocolAdapter):
         return str(result)
 
     def _extract_text_from_parts(self, parts: list[dict[str, Any]]) -> str:
-        """Extract text from message parts."""
+        """Extract text from message parts.
+
+        v0.3 parts carry kind="text"; v1.0 dropped the kind discriminator and
+        uses a OneOf where presence of the `text` field implies a text part.
+        Accept either; reject parts that explicitly mark a non-text kind.
+        """
         texts = []
         for part in parts:
-            if part.get("kind") == "text":
-                texts.append(part.get("text", ""))
+            kind = part.get("kind", "")
+            if kind and kind != "text":
+                continue
+            text = part.get("text", "")
+            if text:
+                texts.append(text)
         return "\n".join(texts)
+
+    def _normalize_task_state(self, state: str) -> str:
+        """Normalize task state strings across A2A v0.3 and v1.0.
+
+        v0.3 emits lowercase strings ('completed', 'input-required'); v1.0
+        emits ProtoJSON enum form per ADR-001 ('TASK_STATE_COMPLETED',
+        'TASK_STATE_INPUT_REQUIRED'). Map both to the v0.3 wire form.
+        """
+        if not state:
+            return ""
+        s = state.lower()
+        if s.startswith("task_state_"):
+            s = s[len("task_state_") :]
+        return s.replace("_", "-")
 
     async def _poll_task_completion(
         self,
@@ -326,7 +374,10 @@ class A2AAdapter(ProtocolAdapter):
         import asyncio
 
         result = initial_response.get("result", {})
-        task_id = result.get("taskId")
+        # v1.0 wraps the task in a OneOf; unwrap to read the task id.
+        if isinstance(result.get("task"), dict):
+            result = result["task"]
+        task_id = result.get("id")
 
         if not task_id:
             return self._extract_content(initial_response)
@@ -337,7 +388,7 @@ class A2AAdapter(ProtocolAdapter):
         while (time.monotonic() - start_time) < timeout_seconds:
             jsonrpc_request = self._build_jsonrpc_request(
                 method="tasks/get",
-                params={"taskId": task_id},
+                params={"id": task_id},
             )
 
             response = await self.client.post(
@@ -355,7 +406,12 @@ class A2AAdapter(ProtocolAdapter):
 
             task_data = response.json()
             task_result = task_data.get("result", {})
-            state = task_result.get("state", "")
+            # v1.0 wraps the task in a OneOf; unwrap before reading status.
+            if isinstance(task_result.get("task"), dict):
+                task_result = task_result["task"]
+            state = self._normalize_task_state(
+                task_result.get("status", {}).get("state", "")
+            )
 
             if state in ("completed", "failed", "canceled", "rejected"):
                 return self._extract_content(task_data)
@@ -378,7 +434,10 @@ class A2AAdapter(ProtocolAdapter):
         import asyncio
 
         result = initial_response.get("result", {})
-        task_id = result.get("taskId")
+        # v1.0 wraps the task in a OneOf; unwrap to read the task id.
+        if isinstance(result.get("task"), dict):
+            result = result["task"]
+        task_id = result.get("id")
 
         if not task_id:
             return self._extract_content(initial_response)
@@ -389,7 +448,7 @@ class A2AAdapter(ProtocolAdapter):
         while (time.monotonic() - start_time) < timeout_seconds:
             jsonrpc_request = self._build_jsonrpc_request(
                 method="tasks/get",
-                params={"taskId": task_id},
+                params={"id": task_id},
             )
 
             await ws.send(json.dumps(jsonrpc_request))
@@ -398,7 +457,11 @@ class A2AAdapter(ProtocolAdapter):
             try:
                 task_data = json.loads(response_text)
                 task_result = task_data.get("result", {})
-                state = task_result.get("state", "")
+                if isinstance(task_result.get("task"), dict):
+                    task_result = task_result["task"]
+                state = self._normalize_task_state(
+                    task_result.get("status", {}).get("state", "")
+                )
 
                 if state in ("completed", "failed", "canceled", "rejected"):
                     return self._extract_content(task_data)

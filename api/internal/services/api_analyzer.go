@@ -394,6 +394,19 @@ func (a *APIAnalyzer) probeEndpoint(ctx context.Context, agent *models.Agent) (m
 		},
 	}
 
+	// A2A agents: try JSON-RPC first since the protocol is already known
+	if agent.EndpointConfig.Protocol == "a2a" {
+		attempt := a.tryProbe(ctx, probeURL, a2aProbe, agent.AuthConfig)
+		probeLog = append(probeLog, attempt)
+
+		if attempt.StatusCode >= 200 && attempt.StatusCode < 300 && attempt.Error == "" {
+			var respData map[string]interface{}
+			if err := json.Unmarshal([]byte(attempt.Response), &respData); err == nil {
+				return respData, probeLog
+			}
+		}
+	}
+
 	for _, payload := range probeFormats {
 		attempt := a.tryProbe(ctx, probeURL, payload, agent.AuthConfig)
 		probeLog = append(probeLog, attempt)
@@ -401,8 +414,7 @@ func (a *APIAnalyzer) probeEndpoint(ctx context.Context, agent *models.Agent) (m
 		if attempt.StatusCode >= 200 && attempt.StatusCode < 300 && attempt.Error == "" {
 			var respData map[string]interface{}
 			if err := json.Unmarshal([]byte(attempt.Response), &respData); err == nil {
-				// If the response is a JSON-RPC error (endpoint expects JSON-RPC),
-				// try again with a proper A2A message/send envelope.
+				// Detected JSON-RPC endpoint — retry with A2A envelope
 				if _, hasJsonrpc := respData["jsonrpc"]; hasJsonrpc {
 					if _, hasErr := respData["error"]; hasErr {
 						a2aAttempt := a.tryProbe(ctx, probeURL, a2aProbe, agent.AuthConfig)
