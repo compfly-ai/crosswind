@@ -311,7 +311,7 @@ class A2AAdapter(ProtocolAdapter):
                     return text
 
             state = status.get("state", "")
-            return f"[Task {result.get('taskId', 'unknown')}: {state}]"
+            return f"[Task {result.get('id', 'unknown')}: {state}]"
 
         # Error response
         error = response_data.get("error")
@@ -337,7 +337,7 @@ class A2AAdapter(ProtocolAdapter):
         import asyncio
 
         result = initial_response.get("result", {})
-        task_id = result.get("taskId")
+        task_id = result.get("id")
 
         if not task_id:
             return self._extract_content(initial_response)
@@ -348,7 +348,7 @@ class A2AAdapter(ProtocolAdapter):
         while (time.monotonic() - start_time) < timeout_seconds:
             jsonrpc_request = self._build_jsonrpc_request(
                 method="tasks/get",
-                params={"taskId": task_id},
+                params={"id": task_id},
             )
 
             response = await self.client.post(
@@ -366,7 +366,7 @@ class A2AAdapter(ProtocolAdapter):
 
             task_data = response.json()
             task_result = task_data.get("result", {})
-            state = task_result.get("state", "")
+            state = task_result.get("status", {}).get("state", "")
 
             if state in ("completed", "failed", "canceled", "rejected"):
                 return self._extract_content(task_data)
@@ -389,7 +389,7 @@ class A2AAdapter(ProtocolAdapter):
         import asyncio
 
         result = initial_response.get("result", {})
-        task_id = result.get("taskId")
+        task_id = result.get("id")
 
         if not task_id:
             return self._extract_content(initial_response)
@@ -400,7 +400,7 @@ class A2AAdapter(ProtocolAdapter):
         while (time.monotonic() - start_time) < timeout_seconds:
             jsonrpc_request = self._build_jsonrpc_request(
                 method="tasks/get",
-                params={"taskId": task_id},
+                params={"id": task_id},
             )
 
             await ws.send(json.dumps(jsonrpc_request))
@@ -409,7 +409,7 @@ class A2AAdapter(ProtocolAdapter):
             try:
                 task_data = json.loads(response_text)
                 task_result = task_data.get("result", {})
-                state = task_result.get("state", "")
+                state = task_result.get("status", {}).get("state", "")
 
                 if state in ("completed", "failed", "canceled", "rejected"):
                     return self._extract_content(task_data)
