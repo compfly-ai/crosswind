@@ -97,6 +97,7 @@ type PerformanceMetrics = models.PerformanceMetrics
 
 type ScenarioSet = models.ScenarioSet
 type Scenario = models.Scenario
+type ScenarioTurn = models.ScenarioTurn
 type ScenarioInput = models.ScenarioInput
 type ScenarioUpdate = models.ScenarioUpdate
 type GenerateScenariosRequest = models.GenerateScenariosRequest
