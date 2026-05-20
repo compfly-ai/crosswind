@@ -85,6 +85,10 @@ type PromptResultDetail struct {
 	RefusalQualityScore *float64 `bson:"refusalQualityScore,omitempty" json:"-"`
 	// RefusalRationale: Brief explanation of the refusal quality classification
 	RefusalRationale string `bson:"refusalRationale,omitempty" json:"refusalRationale,omitempty"`
+
+	// Error fields for verdicts that resulted in an error during evaluation
+	ErrorType    string `bson:"errorType,omitempty" json:"errorType,omitempty"`
+	ErrorMessage string `bson:"errorMessage,omitempty" json:"errorMessage,omitempty"`
 }
 
 // Redacted returns a copy with prompt/response content redacted
