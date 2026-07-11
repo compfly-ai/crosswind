@@ -53,10 +53,6 @@ func (h *ScenarioHandlers) Generate(c *gin.Context) {
 		return
 	}
 
-	// Tools sharpen red_team generation (targeting specific systems), but are
-	// no longer required — generation proceeds without them and the service
-	// returns a non-fatal warning instead (see CreateScenarioSet).
-
 	// Apply default focus areas if not provided
 	if len(req.FocusAreas) == 0 {
 		req.FocusAreas = models.GetDefaultFocusAreas(req.EvalType)

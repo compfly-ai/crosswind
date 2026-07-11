@@ -279,10 +279,11 @@ const (
 	OWASP_ASI10_RogueAgents         = "ASI10" // Rogue Agents - compromised agents acting maliciously
 )
 
-// GenerateScenariosRequest represents the request to generate scenarios
+// GenerateScenariosRequest represents the request to generate scenarios.
+// Target tools are not part of the request — generation resolves them from
+// the agent's declared capabilities (see ScenarioService.CreateScenarioSet).
 type GenerateScenariosRequest struct {
 	EvalType           string   `json:"evalType,omitempty"`           // "red_team" (default) or "trust"
-	Tools              []string `json:"tools,omitempty"`              // Required for red_team, optional for trust
 	FocusAreas         []string `json:"focusAreas,omitempty"`         // Uses defaults if not provided
 	CustomInstructions string   `json:"customInstructions,omitempty"` // Additional instructions for scenario generation
 	ContextIDs         []string `json:"contextIds,omitempty"`         // Context IDs for document-based generation

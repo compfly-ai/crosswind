@@ -88,6 +88,13 @@ func (s *ScenarioService) CreateScenarioSet(ctx context.Context, agentID string,
 		return nil, err
 	}
 
+	// Target tools come from the agent's declared capabilities. Agents that
+	// declare none generate without tool targeting, with a warning below.
+	var tools []string
+	if agent.DeclaredCapabilities != nil {
+		tools = agent.DeclaredCapabilities.Tools
+	}
+
 	// Set default count and enforce limits
 	count := req.Count
 	if count == 0 {
@@ -138,7 +145,7 @@ func (s *ScenarioService) CreateScenarioSet(ctx context.Context, agentID string,
 		Status:  models.ScenarioStatusPending,
 		Config: models.ScenarioGenConfig{
 			EvalType:           req.EvalType,
-			Tools:              req.Tools,
+			Tools:              tools,
 			FocusAreas:         req.FocusAreas,
 			CustomInstructions: req.CustomInstructions,
 			ContextIDs:         req.ContextIDs,
@@ -168,10 +175,10 @@ func (s *ScenarioService) CreateScenarioSet(ctx context.Context, agentID string,
 		estimatedSeconds += 10 // Extra time for context processing
 	}
 
-	// Tools aren't required for either eval type, but both generate sharper
-	// scenarios with them — warn (non-fatally) when none are provided.
+	// Both eval types generate sharper scenarios with tools — warn
+	// (non-fatally) when the agent declares none.
 	var warnings []string
-	if len(req.Tools) == 0 {
+	if len(tools) == 0 {
 		if req.EvalType == models.EvalTypeRedTeam {
 			warnings = append(warnings,
 				"Generating red-team scenarios without target tools — tool-misuse and privilege-escalation vectors will be less precise. Declare the agent's tools for sharper coverage.")

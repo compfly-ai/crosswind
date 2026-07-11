@@ -12,10 +12,10 @@ import (
 )
 
 // Covers the deterministic (non-LLM) half of scenario generation:
-// CreateScenarioSet, which validates, builds the config, persists the
-// pending set, and returns the response + any warnings. The actual
-// LLM-driven ExecuteGeneration runs in a background goroutine against
-// live OpenAI and is out of scope for these mock-based tests.
+// CreateScenarioSet, which resolves target tools from the agent, builds the
+// config, persists the pending set, and returns the response + any warnings.
+// The LLM-driven ExecuteGeneration runs in a background goroutine against live
+// OpenAI and is out of scope for these mock-based tests.
 //
 // Reuses MockAgentRepo / MockScenarioRepo / newTestScenarioService /
 // sampleAgent from scenario_import_test.go (same package).
@@ -28,48 +28,81 @@ func captureCreatedSet(scenarios *MockScenarioRepo, out **models.ScenarioSet) {
 		Return(nil)
 }
 
+// agentWithTools returns a sample agent that declares the given tools.
+func agentWithTools(tools ...string) *models.Agent {
+	agent := sampleAgent()
+	agent.DeclaredCapabilities = &models.AgentCapabilities{Tools: tools}
+	return agent
+}
+
 func redTeamReq() *models.GenerateScenariosRequest {
 	return &models.GenerateScenariosRequest{
 		EvalType:   models.EvalTypeRedTeam,
-		Tools:      []string{"salesforce"},
 		FocusAreas: models.GetDefaultFocusAreas(models.EvalTypeRedTeam),
 		Count:      10,
 	}
 }
 
-// --- Warning behavior (the tools-optional change) ---
+func trustReq() *models.GenerateScenariosRequest {
+	return &models.GenerateScenariosRequest{
+		EvalType:   models.EvalTypeTrust,
+		FocusAreas: models.GetDefaultFocusAreas(models.EvalTypeTrust),
+		Count:      10,
+	}
+}
 
-func TestCreateScenarioSet_RedTeamWithoutTools_Warns(t *testing.T) {
+// --- Target tools resolve from the agent's declared capabilities ---
+
+func TestCreateScenarioSet_ToolsResolvedFromAgent(t *testing.T) {
 	agents := new(MockAgentRepo)
 	scenarios := new(MockScenarioRepo)
 	svc := newTestScenarioService(agents, scenarios)
 
-	agents.On("FindByID", mock.Anything, "agent-123").Return(sampleAgent(), nil)
+	agents.On("FindByID", mock.Anything, "agent-123").Return(agentWithTools("salesforce", "slack"), nil)
 	var created *models.ScenarioSet
 	captureCreatedSet(scenarios, &created)
 
-	req := redTeamReq()
-	req.Tools = nil // no tools
-
-	resp, err := svc.CreateScenarioSet(context.Background(), "agent-123", req)
+	resp, err := svc.CreateScenarioSet(context.Background(), "agent-123", redTeamReq())
 
 	require.NoError(t, err)
-	assert.Equal(t, models.ScenarioStatusPending, resp.Status)
-	require.NotEmpty(t, resp.Warnings, "red_team without tools should warn")
-	assert.Contains(t, resp.Warnings[0], "without target tools")
-	// Generation still proceeds — the set was created.
 	require.NotNil(t, created)
-	assert.Equal(t, models.ScenarioStatusPending, created.Status)
+	assert.Equal(t, []string{"salesforce", "slack"}, created.Config.Tools, "tools come from the agent doc")
+	assert.Empty(t, resp.Warnings, "an agent with tools generates without a warning")
 	agents.AssertExpectations(t)
 	scenarios.AssertExpectations(t)
 }
 
-func TestCreateScenarioSet_RedTeamWithTools_NoWarning(t *testing.T) {
+// --- Warning behavior: agents that declare no tools ---
+
+func TestCreateScenarioSet_RedTeamAgentWithoutTools_Warns(t *testing.T) {
 	agents := new(MockAgentRepo)
 	scenarios := new(MockScenarioRepo)
 	svc := newTestScenarioService(agents, scenarios)
 
+	// sampleAgent has no DeclaredCapabilities.
 	agents.On("FindByID", mock.Anything, "agent-123").Return(sampleAgent(), nil)
+	var created *models.ScenarioSet
+	captureCreatedSet(scenarios, &created)
+
+	resp, err := svc.CreateScenarioSet(context.Background(), "agent-123", redTeamReq())
+
+	require.NoError(t, err)
+	assert.Equal(t, models.ScenarioStatusPending, resp.Status)
+	require.NotEmpty(t, resp.Warnings, "red_team on a tool-less agent should warn")
+	assert.Contains(t, resp.Warnings[0], "without target tools")
+	// Generation still proceeds — the set was created.
+	require.NotNil(t, created)
+	assert.Empty(t, created.Config.Tools)
+	agents.AssertExpectations(t)
+	scenarios.AssertExpectations(t)
+}
+
+func TestCreateScenarioSet_RedTeamAgentWithTools_NoWarning(t *testing.T) {
+	agents := new(MockAgentRepo)
+	scenarios := new(MockScenarioRepo)
+	svc := newTestScenarioService(agents, scenarios)
+
+	agents.On("FindByID", mock.Anything, "agent-123").Return(agentWithTools("salesforce"), nil)
 	var created *models.ScenarioSet
 	captureCreatedSet(scenarios, &created)
 
@@ -81,7 +114,7 @@ func TestCreateScenarioSet_RedTeamWithTools_NoWarning(t *testing.T) {
 	scenarios.AssertExpectations(t)
 }
 
-func TestCreateScenarioSet_TrustWithoutTools_Warns(t *testing.T) {
+func TestCreateScenarioSet_TrustAgentWithoutTools_Warns(t *testing.T) {
 	agents := new(MockAgentRepo)
 	scenarios := new(MockScenarioRepo)
 	svc := newTestScenarioService(agents, scenarios)
@@ -90,36 +123,25 @@ func TestCreateScenarioSet_TrustWithoutTools_Warns(t *testing.T) {
 	var created *models.ScenarioSet
 	captureCreatedSet(scenarios, &created)
 
-	req := &models.GenerateScenariosRequest{
-		EvalType:   models.EvalTypeTrust,
-		FocusAreas: models.GetDefaultFocusAreas(models.EvalTypeTrust),
-		Count:      10,
-	}
-	resp, err := svc.CreateScenarioSet(context.Background(), "agent-123", req)
+	resp, err := svc.CreateScenarioSet(context.Background(), "agent-123", trustReq())
 
 	require.NoError(t, err)
-	require.NotEmpty(t, resp.Warnings, "trust without tools should warn")
+	require.NotEmpty(t, resp.Warnings, "trust on a tool-less agent should warn")
 	assert.Contains(t, resp.Warnings[0], "trust scenarios without tools")
 	agents.AssertExpectations(t)
 	scenarios.AssertExpectations(t)
 }
 
-func TestCreateScenarioSet_TrustWithTools_NoWarning(t *testing.T) {
+func TestCreateScenarioSet_TrustAgentWithTools_NoWarning(t *testing.T) {
 	agents := new(MockAgentRepo)
 	scenarios := new(MockScenarioRepo)
 	svc := newTestScenarioService(agents, scenarios)
 
-	agents.On("FindByID", mock.Anything, "agent-123").Return(sampleAgent(), nil)
+	agents.On("FindByID", mock.Anything, "agent-123").Return(agentWithTools("salesforce"), nil)
 	var created *models.ScenarioSet
 	captureCreatedSet(scenarios, &created)
 
-	req := &models.GenerateScenariosRequest{
-		EvalType:   models.EvalTypeTrust,
-		Tools:      []string{"salesforce"},
-		FocusAreas: models.GetDefaultFocusAreas(models.EvalTypeTrust),
-		Count:      10,
-	}
-	resp, err := svc.CreateScenarioSet(context.Background(), "agent-123", req)
+	resp, err := svc.CreateScenarioSet(context.Background(), "agent-123", trustReq())
 
 	require.NoError(t, err)
 	assert.Empty(t, resp.Warnings)
@@ -127,14 +149,14 @@ func TestCreateScenarioSet_TrustWithTools_NoWarning(t *testing.T) {
 	scenarios.AssertExpectations(t)
 }
 
-// --- Config building: request fields flow into the persisted set ---
+// --- Config building: request + agent fields flow into the persisted set ---
 
-func TestCreateScenarioSet_BuildsConfigFromRequest(t *testing.T) {
+func TestCreateScenarioSet_BuildsConfig(t *testing.T) {
 	agents := new(MockAgentRepo)
 	scenarios := new(MockScenarioRepo)
 	svc := newTestScenarioService(agents, scenarios)
 
-	agent := sampleAgent()
+	agent := agentWithTools("salesforce")
 	agent.Industry = "finance"
 	agents.On("FindByID", mock.Anything, "agent-123").Return(agent, nil)
 	var created *models.ScenarioSet
@@ -143,7 +165,6 @@ func TestCreateScenarioSet_BuildsConfigFromRequest(t *testing.T) {
 	multiTurn := false
 	req := &models.GenerateScenariosRequest{
 		EvalType:           models.EvalTypeRedTeam,
-		Tools:              []string{"salesforce", "slack"},
 		FocusAreas:         models.GetDefaultFocusAreas(models.EvalTypeRedTeam),
 		CustomInstructions: "focus on data exfiltration",
 		Count:              15,
@@ -156,9 +177,9 @@ func TestCreateScenarioSet_BuildsConfigFromRequest(t *testing.T) {
 	require.NotNil(t, created)
 	cfg := created.Config
 	assert.Equal(t, models.EvalTypeRedTeam, cfg.EvalType)
-	assert.Equal(t, []string{"salesforce", "slack"}, cfg.Tools)
+	assert.Equal(t, []string{"salesforce"}, cfg.Tools, "tools come from the agent")
 	assert.Equal(t, "focus on data exfiltration", cfg.CustomInstructions)
-	assert.Equal(t, "finance", cfg.Industry, "industry comes from the agent, not the request")
+	assert.Equal(t, "finance", cfg.Industry, "industry comes from the agent")
 	assert.Equal(t, 15, cfg.Count)
 	assert.False(t, cfg.IncludeMultiTurn, "explicit false is honored")
 	assert.Equal(t, models.ScenarioStatusPending, created.Status)
@@ -172,7 +193,7 @@ func TestCreateScenarioSet_IncludeMultiTurnDefaultsTrue(t *testing.T) {
 	scenarios := new(MockScenarioRepo)
 	svc := newTestScenarioService(agents, scenarios)
 
-	agents.On("FindByID", mock.Anything, "agent-123").Return(sampleAgent(), nil)
+	agents.On("FindByID", mock.Anything, "agent-123").Return(agentWithTools("salesforce"), nil)
 	var created *models.ScenarioSet
 	captureCreatedSet(scenarios, &created)
 
@@ -193,7 +214,7 @@ func TestCreateScenarioSet_CountDefaultsWhenZero(t *testing.T) {
 	scenarios := new(MockScenarioRepo)
 	svc := newTestScenarioService(agents, scenarios)
 
-	agents.On("FindByID", mock.Anything, "agent-123").Return(sampleAgent(), nil)
+	agents.On("FindByID", mock.Anything, "agent-123").Return(agentWithTools("salesforce"), nil)
 	var created *models.ScenarioSet
 	captureCreatedSet(scenarios, &created)
 
@@ -212,7 +233,7 @@ func TestCreateScenarioSet_CountClampedToMax(t *testing.T) {
 	scenarios := new(MockScenarioRepo)
 	svc := newTestScenarioService(agents, scenarios)
 
-	agents.On("FindByID", mock.Anything, "agent-123").Return(sampleAgent(), nil)
+	agents.On("FindByID", mock.Anything, "agent-123").Return(agentWithTools("salesforce"), nil)
 	var created *models.ScenarioSet
 	captureCreatedSet(scenarios, &created)
 
