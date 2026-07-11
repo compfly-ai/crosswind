@@ -81,7 +81,7 @@ func TestCreateScenarioSet_RedTeamWithTools_NoWarning(t *testing.T) {
 	scenarios.AssertExpectations(t)
 }
 
-func TestCreateScenarioSet_TrustWithoutTools_NoWarning(t *testing.T) {
+func TestCreateScenarioSet_TrustWithoutTools_Warns(t *testing.T) {
 	agents := new(MockAgentRepo)
 	scenarios := new(MockScenarioRepo)
 	svc := newTestScenarioService(agents, scenarios)
@@ -92,6 +92,30 @@ func TestCreateScenarioSet_TrustWithoutTools_NoWarning(t *testing.T) {
 
 	req := &models.GenerateScenariosRequest{
 		EvalType:   models.EvalTypeTrust,
+		FocusAreas: models.GetDefaultFocusAreas(models.EvalTypeTrust),
+		Count:      10,
+	}
+	resp, err := svc.CreateScenarioSet(context.Background(), "agent-123", req)
+
+	require.NoError(t, err)
+	require.NotEmpty(t, resp.Warnings, "trust without tools should warn")
+	assert.Contains(t, resp.Warnings[0], "trust scenarios without tools")
+	agents.AssertExpectations(t)
+	scenarios.AssertExpectations(t)
+}
+
+func TestCreateScenarioSet_TrustWithTools_NoWarning(t *testing.T) {
+	agents := new(MockAgentRepo)
+	scenarios := new(MockScenarioRepo)
+	svc := newTestScenarioService(agents, scenarios)
+
+	agents.On("FindByID", mock.Anything, "agent-123").Return(sampleAgent(), nil)
+	var created *models.ScenarioSet
+	captureCreatedSet(scenarios, &created)
+
+	req := &models.GenerateScenariosRequest{
+		EvalType:   models.EvalTypeTrust,
+		Tools:      []string{"salesforce"},
 		FocusAreas: models.GetDefaultFocusAreas(models.EvalTypeTrust),
 		Count:      10,
 	}
