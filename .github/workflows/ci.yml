@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   go:
-    name: Go
+    name: Build and Test
     runs-on: ubuntu-latest
     defaults:
       run:
