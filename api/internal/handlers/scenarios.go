@@ -53,13 +53,9 @@ func (h *ScenarioHandlers) Generate(c *gin.Context) {
 		return
 	}
 
-	// Validate tools requirement based on evalType
-	// Red team requires tools (targeting specific systems), trust doesn't necessarily
-	if req.EvalType == models.EvalTypeRedTeam && len(req.Tools) == 0 {
-		respondWithError(c, http.StatusBadRequest, "INVALID_REQUEST",
-			"At least one tool is required for red_team scenarios", nil)
-		return
-	}
+	// Tools sharpen red_team generation (targeting specific systems), but are
+	// no longer required — generation proceeds without them and the service
+	// returns a non-fatal warning instead (see CreateScenarioSet).
 
 	// Apply default focus areas if not provided
 	if len(req.FocusAreas) == 0 {

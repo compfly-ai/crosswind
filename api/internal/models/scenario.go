@@ -293,11 +293,13 @@ type GenerateScenariosRequest struct {
 	IncludeMultiTurn *bool `json:"includeMultiTurn,omitempty"`
 }
 
-// GenerateScenariosResponse is returned when scenario generation starts
+// GenerateScenariosResponse is returned when scenario generation starts.
+// Response-only (no bson tags) — nothing here is persisted.
 type GenerateScenariosResponse struct {
-	ScenarioSetID    string `json:"scenarioSetId"`
-	Status           string `json:"status"`
-	EstimatedSeconds int    `json:"estimatedSeconds"`
+	ScenarioSetID    string   `json:"scenarioSetId"`
+	Status           string   `json:"status"`
+	EstimatedSeconds int      `json:"estimatedSeconds"`
+	Warnings         []string `json:"warnings,omitempty"` // Non-fatal notices, e.g. red_team generated without target tools
 }
 
 // UpdateScenariosRequest represents updates to a scenario set

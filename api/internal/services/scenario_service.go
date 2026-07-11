@@ -168,10 +168,19 @@ func (s *ScenarioService) CreateScenarioSet(ctx context.Context, agentID string,
 		estimatedSeconds += 10 // Extra time for context processing
 	}
 
+	// Tools aren't required, but red_team generation is sharper with them —
+	// warn (non-fatally) when generating red_team scenarios without any.
+	var warnings []string
+	if req.EvalType == models.EvalTypeRedTeam && len(req.Tools) == 0 {
+		warnings = append(warnings,
+			"Generating red-team scenarios without target tools — tool-misuse and privilege-escalation vectors will be less precise. Declare the agent's tools for sharper coverage.")
+	}
+
 	return &models.GenerateScenariosResponse{
 		ScenarioSetID:    setID,
 		Status:           models.ScenarioStatusPending,
 		EstimatedSeconds: estimatedSeconds,
+		Warnings:         warnings,
 	}, nil
 }
 
