@@ -39,9 +39,9 @@ logical request.
 
 - Receive the response through either the Socket.IO acknowledgement or a
   configured response event.
-- Apply a selected state profile only to the first scenario request; send an empty
-  state object on later turns unless a future product contract explicitly changes
-  that rule.
+- Apply a selected state profile only to the first scenario request. Omit the
+  `state` field on later turns so `{}` cannot be interpreted as resetting the
+  agent's session state.
 
 ### Optional state and protobuf
 
