@@ -1,0 +1,298 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://compfly.ai/contracts/conversation-runtime-v1.schema.json",
+  "title": "CompFly Agent Conversation Runtime Configuration Slice v1",
+  "description": "The normalized endpointConfig and conversationContract slice shared by Platform Backend, Agent Eval, and the frontend. A complete agent registration contains other metadata and authentication fields outside this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["endpointConfig", "conversationContract"],
+  "properties": {
+    "endpointConfig": { "$ref": "#/$defs/endpointConfig" },
+    "conversationContract": { "$ref": "#/$defs/conversationContract" }
+  },
+  "$defs": {
+    "endpointConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocol", "endpoint"],
+      "properties": {
+        "protocol": {
+          "type": "string",
+          "enum": ["custom_ws", "socketio"]
+        },
+        "endpoint": {
+          "type": "string",
+          "minLength": 1,
+          "format": "uri"
+        },
+        "socketio": { "$ref": "#/$defs/socketIOTransportConfig" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "protocol": { "const": "socketio" } },
+            "required": ["protocol"]
+          },
+          "then": { "required": ["socketio"] }
+        },
+        {
+          "if": {
+            "properties": { "protocol": { "const": "custom_ws" } },
+            "required": ["protocol"]
+          },
+          "then": { "properties": { "socketio": false } }
+        }
+      ]
+    },
+    "socketIOTransportConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["namespace", "requestEvent", "responseMode"],
+      "properties": {
+        "namespace": { "type": "string", "minLength": 1 },
+        "requestEvent": { "type": "string", "minLength": 1 },
+        "responseMode": {
+          "type": "string",
+          "enum": ["ack", "event"]
+        },
+        "responseEvent": { "type": "string", "minLength": 1 }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "responseMode": { "const": "event" } },
+            "required": ["responseMode"]
+          },
+          "then": { "required": ["responseEvent"] }
+        },
+        {
+          "if": {
+            "properties": { "responseMode": { "const": "ack" } },
+            "required": ["responseMode"]
+          },
+          "then": { "properties": { "responseEvent": false } }
+        }
+      ]
+    },
+    "conversationContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contractVersion", "message"],
+      "properties": {
+        "contractVersion": { "const": "1" },
+        "message": { "$ref": "#/$defs/messageContract" },
+        "state": { "$ref": "#/$defs/stateContract" }
+      }
+    },
+    "messageContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["encoding"],
+      "properties": {
+        "encoding": {
+          "type": "string",
+          "enum": ["json", "protobuf"]
+        },
+        "json": { "$ref": "#/$defs/jsonMessageContract" },
+        "protobuf": { "$ref": "#/$defs/protobufMessageContract" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "encoding": { "const": "json" } },
+            "required": ["encoding"]
+          },
+          "then": {
+            "required": ["json"],
+            "properties": { "protobuf": false }
+          }
+        },
+        {
+          "if": {
+            "properties": { "encoding": { "const": "protobuf" } },
+            "required": ["encoding"]
+          },
+          "then": {
+            "required": ["protobuf"],
+            "properties": { "json": false }
+          }
+        }
+      ]
+    },
+    "jsonMessageContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["preset"],
+      "properties": {
+        "preset": { "const": "compfly_conversation_v1" }
+      }
+    },
+    "protobufMessageContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaArtifactId", "request", "response"],
+      "properties": {
+        "schemaArtifactId": { "type": "string", "minLength": 1 },
+        "request": { "$ref": "#/$defs/protobufRequestMapping" },
+        "response": { "$ref": "#/$defs/protobufResponseMapping" },
+        "stateMappings": { "$ref": "#/$defs/protobufStateMappings" }
+      }
+    },
+    "protobufRequestMapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["messageType", "promptField"],
+      "properties": {
+        "messageType": { "type": "string", "minLength": 1 },
+        "promptField": { "type": "string", "minLength": 1 }
+      }
+    },
+    "protobufResponseMapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["messageType", "contentField"],
+      "properties": {
+        "messageType": { "type": "string", "minLength": 1 },
+        "contentField": { "type": "string", "minLength": 1 },
+        "sessionIdField": { "type": "string", "minLength": 1 },
+        "errorCodeField": { "type": "string", "minLength": 1 },
+        "errorMessageField": { "type": "string", "minLength": 1 }
+      }
+    },
+    "protobufStateMappings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["request"],
+      "properties": {
+        "request": { "$ref": "#/$defs/fieldPathMap" },
+        "response": { "$ref": "#/$defs/fieldPathMap" }
+      }
+    },
+    "fieldPathMap": {
+      "type": "object",
+      "propertyNames": { "minLength": 1 },
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    },
+    "stateContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["defaultDelivery", "fields"],
+      "properties": {
+        "defaultDelivery": {
+          "type": "string",
+          "enum": ["initial", "every_turn", "carry_forward"]
+        },
+        "fields": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/stateField" }
+        }
+      }
+    },
+    "stateField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "label": { "type": "string" },
+        "type": {
+          "type": "string",
+          "enum": ["string", "number", "boolean", "json"]
+        },
+        "required": { "type": "boolean" },
+        "description": { "type": "string" },
+        "default": true,
+        "sensitive": { "type": "boolean" },
+        "delivery": {
+          "type": "string",
+          "enum": ["initial", "every_turn", "carry_forward"]
+        }
+      }
+    },
+    "schemaArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifactId", "kind", "digest", "fileNames", "sizeBytes"],
+      "properties": {
+        "artifactId": { "type": "string", "minLength": 1 },
+        "kind": { "const": "protobuf_descriptor_set" },
+        "digest": { "type": "string", "minLength": 1 },
+        "fileNames": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "sizeBytes": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "protoFieldInventory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "type", "number"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "type": { "type": "string", "minLength": 1 },
+        "number": { "type": "integer", "minimum": 1 },
+        "repeated": { "type": "boolean" },
+        "map": { "type": "boolean" }
+      }
+    },
+    "protoMessageInventory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "fields"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "fields": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/protoFieldInventory" }
+        }
+      }
+    },
+    "contractInspectionResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaArtifact", "messages"],
+      "properties": {
+        "schemaArtifact": { "$ref": "#/$defs/schemaArtifact" },
+        "messages": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/protoMessageInventory" }
+        },
+        "conversationContract": { "$ref": "#/$defs/conversationContract" }
+      }
+    },
+    "stateProfileSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profileId", "name", "values"],
+      "properties": {
+        "profileId": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "values": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "verifyRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["environment", "prompt"],
+      "properties": {
+        "environment": {
+          "type": "string",
+          "enum": ["dev", "staging", "prod"]
+        },
+        "prompt": { "type": "string", "minLength": 1 },
+        "stateValues": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    }
+  }
+}

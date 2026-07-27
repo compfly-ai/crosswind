@@ -1,0 +1,9 @@
+{
+  "environment": "dev",
+  "prompt": "What can you help me with?",
+  "stateValues": {
+    "acting_principal": "bob",
+    "turn_number": 1,
+    "location": "San Francisco"
+  }
+}

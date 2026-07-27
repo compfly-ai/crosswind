@@ -1,0 +1,9 @@
+{
+  "profileId": "sp_bob_sfo",
+  "name": "Bob in San Francisco",
+  "values": {
+    "acting_principal": "bob",
+    "turn_number": 1,
+    "location": "San Francisco"
+  }
+}

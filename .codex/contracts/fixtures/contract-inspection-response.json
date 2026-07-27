@@ -1,0 +1,28 @@
+{
+  "schemaArtifact": {
+    "artifactId": "schema_flyedge_operator_v1",
+    "kind": "protobuf_descriptor_set",
+    "digest": "sha256:example",
+    "fileNames": [
+      "protocol/operator.proto"
+    ],
+    "sizeBytes": 1234
+  },
+  "messages": [
+    {
+      "name": "compfly.operator.v1.Frame",
+      "fields": [
+        {
+          "path": "request.input.content",
+          "type": "string",
+          "number": 2
+        },
+        {
+          "path": "response.output.content",
+          "type": "string",
+          "number": 2
+        }
+      ]
+    }
+  ]
+}

@@ -1,185 +1,195 @@
-# Socket.IO and reusable state onboarding plan
+# Transport-neutral conversation and state onboarding plan
 
 ## Goal
 
-Add Socket.IO as another selectable agent protocol while preserving the existing
-`custom_ws` onboarding, synchronization, verification, and evaluation lifecycle.
-Add optional, reusable starting state in a transport-independent form. JSON must
-work without protobuf inspection; protobuf is an optional encoding of the same
-logical request.
+Support raw WebSocket and Socket.IO agents with either JSON or protobuf message
+encoding, plus optional user-declared starting state. Transport, encoding, and
+state lifecycle are independent. JSON needs no upload. A run selects zero or one
+saved agent-scoped state profile.
 
-## Finalized architecture decisions
+## Canonical contracts
 
-### Crosswind
+The finalized v1 contract artifacts are:
 
-- Add `socketio` only to the protocol constants and ordinary endpoint validation.
-- Do not add or move WebSocket or Socket.IO network adapters into Crosswind.
-- Treat `socketio` like `custom_ws`: it is a valid protocol and requires an endpoint.
+- `../contracts/conversation-runtime-v1.schema.json`
+- `../contracts/conversation-manifest-v1.schema.json`
+- `../contracts/conversation-runtime-v1.md`
+- `../contracts/fixtures/`
+- `../contracts/validate_contracts.py`
 
-### Agent Eval Cloud worker
+Those artifacts are normative for downstream service implementation. The
+persisted/shared field is `conversationContract`; it replaces the unshipped
+Socket.IO-shaped `stateContract`. There is no compatibility alias or migration.
 
-- Keep `OpenAPIWebSocketAdapter` in its current Cloud-worker package.
-- Keep `SocketIOAdapter` beside it.
-- Select either through the existing protocol adapter factory.
-- Run Socket.IO agents through the same create, synchronize, verify, and evaluate
-  lifecycle as `custom_ws`.
-
-### Default Socket.IO wire behavior
-
-- Emit a configured request event with this JSON payload by default:
+The normalized Agent Eval registration boundary is:
 
 ```json
 {
-  "type": "message",
-  "messages": [{"role": "user", "content": "..."}],
-  "session_id": "...",
-  "state": {}
+  "endpointConfig": {
+    "protocol": "custom_ws | socketio",
+    "endpoint": "...",
+    "socketio": {}
+  },
+  "conversationContract": {
+    "contractVersion": "1",
+    "message": {
+      "encoding": "json | protobuf"
+    },
+    "state": {
+      "defaultDelivery": "initial | every_turn | carry_forward",
+      "fields": []
+    }
+  }
 }
 ```
 
-- Receive the response through either the Socket.IO acknowledgement or a
-  configured response event.
-- Apply a selected state profile only to the first scenario request. Omit the
-  `state` field on later turns so `{}` cannot be interpreted as resetting the
-  agent's session state.
+`endpointConfig` owns transport/addressing. `conversationContract` owns the
+message codec, schema/mappings, and logical state lifecycle, and contains no
+protocol or Socket.IO settings.
 
-### Optional state and protobuf
+## Finalized architecture
 
-- Model state as transport-independent, typed user-defined fields.
-- Save profiles under an agent, and allow exactly one saved profile to be selected
-  for each evaluation run.
-- Do not require a profile: omitted state is `{}`.
-- Keep protobuf optional. JSON onboarding and verification do not inspect or upload
-  a `.proto` file.
-- When protobuf is selected, store an optional protobuf artifact/configuration and
-  encode the same logical conversation request through the Socket.IO adapter.
+### Crosswind
 
-## Contracts between systems
+- Keep the completed `socketio` protocol constant and ordinary endpoint
+  validation changes.
+- Do not add or move network adapters, descriptors, profiles, or contract
+  inspection into Crosswind.
+- Use the Agent Eval Cloud `StatefulConversationRequest` wrapper to carry
+  optional logical starting values without expanding Crosswind's control-plane
+  responsibilities.
 
-### Protocol configuration
+### Agent Eval Cloud worker
 
-The agent protocol remains the existing protocol discriminator. Socket.IO extends
-the existing endpoint configuration with transport details rather than creating a
-second onboarding API:
+- Replace encoding/state logic embedded in `SocketIOAdapter` with one composed
+  `ContractDrivenAdapter`.
+- Extract transport-only `WebSocketTransport` and `SocketIOTransport` behavior.
+- Add shared `StandardJSONCodec`, `ProtobufCodec`, and `StateCoordinator`.
+- Use the existing protocol factory to compose transport + codec + state.
+- Support the four required combinations:
+  `custom_ws|socketio` x `json|protobuf`.
+- Preserve one WebSocket message as one protobuf payload; do not add an
+  unrequested length prefix.
 
-- `protocol`: `socketio`
-- `endpoint`: required Socket.IO server URL
-- `socketio.namespace`: optional; defaults to `/`
-- `socketio.requestEvent`: required/configured event used to send prompts
-- `socketio.responseMode`: `ack` or `event`
-- `socketio.responseEvent`: required only for event mode
-- `socketio.encoding`: `json` by default, optionally `protobuf`
-- request/response field mappings where a non-default agent contract needs them
-- optional protobuf artifact/message metadata only when encoding is `protobuf`
+### Agent Eval API
 
-### State definition
+- Replace Socket.IO-specific state/inspection types and services with the
+  finalized `conversationContract` types.
+- Make `/analyze` statically validate either protocol against the same contract.
+- Make contract inspection compile protobuf input and optional manifests without
+  contacting the target or an LLM.
+- Store compiled descriptor artifacts by ID; runtime contracts reference
+  `schemaArtifactId` rather than inline base64.
+- Use the same adapter factory for live verification and evaluations.
 
-Agent onboarding may declare a state schema. Each field has a stable name, label,
-type, required flag, and optional description/default. The initial supported scalar
-types are string, number, boolean, and JSON. Transport configuration may map the
-logical state object to its encoded request location; for the default Socket.IO JSON
-contract it is the top-level `state` field.
+### Platform Backend
 
-State schema definitions must not contain organization permission maps, automatic
-field synthesis, scenario permissions, or generated sample/persona data.
+- Store and forward `conversationContract` verbatim; Agent Eval owns deep
+  validation.
+- Preserve normal native create/PATCH, synchronization, automatic `/analyze`,
+  and `/verify` lifecycle for both protocols.
+- Expose `POST /api/v1/agents/{id}/contract/inspect`; JSON does not call it.
+- Keep agent-scoped profile routes and singular `stateProfileId` selection.
+- Validate and snapshot the chosen profile using
+  `conversationContract.state.fields`; never send a profile ID that belongs to
+  another agent or organization.
+- Do not log or persist raw state values in evaluation results.
 
-### State profiles
+### Frontend
 
-Profiles are agent-scoped, named value sets validated against the agent's current
-state schema:
+- Replace `SocketIOContractForm` with one protocol-neutral endpoint contract
+  editor shown for both `custom_ws` and `socketio`.
+- Render transport selection/addressing separately from encoding.
+- Default to the versioned JSON preset and require no upload.
+- Show shared protobuf source/folder/descriptor/manifest inspection and mapping
+  controls only for protobuf.
+- Show Socket.IO namespace/event/response controls only for Socket.IO.
+- Keep state in a separate optional UI section, with a default delivery policy
+  and optional per-field overrides.
+- Keep zero-or-one profile selection in evaluation UI.
 
-- `GET /api/v1/agents/{slug}/state-profiles`
-- `POST /api/v1/agents/{slug}/state-profiles`
-- `GET /api/v1/agents/{slug}/state-profiles/{profileId}`
-- `PATCH /api/v1/agents/{slug}/state-profiles/{profileId}`
-- `DELETE /api/v1/agents/{slug}/state-profiles/{profileId}`
+## Work removed or replaced
 
-An evaluation request accepts one optional `stateProfileId` (singular). Platform
-Backend validates that it belongs to the evaluated agent and snapshots the values
-into the internal job. The worker must not need a second control-plane lookup, and
-must not log raw state values. Persisted evaluation results expose only a
-non-sensitive profile reference/name projection.
+- Socket.IO-only `stateContract` and hardcoded `transport: socketio` types.
+- Protobuf encoding implemented inside `SocketIOAdapter` only.
+- JSON payload construction duplicated across WebSocket and Socket.IO adapters.
+- Inline base64 descriptor storage in agent contracts.
+- Socket.IO-only protobuf inspection route/service names and protocol gates.
+- Socket.IO-only verification dispatch.
+- Cloud-only create bypass and separate onboarding lifecycle.
+- Mandatory protobuf upload for JSON.
+- Organization persona sets, permissions, automatic synthesis, and multiple
+  profiles per run.
 
-### Analyze and verify
+## Service checkpoints and sub-agent scopes
 
-- JSON analyze requests use the normal JSON endpoint and never require protobuf.
-- Protobuf analyze requests use multipart upload only when encoding is protobuf.
-- Verification uses the shared agent verification lifecycle and accepts
-  `{environment, prompt, stateValues}`; state values are optional and default to
-  `{}`.
+Only one service sub-agent runs at a time. Every sub-agent must preserve
+unrelated user changes, modify only its assigned repository, run focused tests,
+run that repository's complete relevant suite, run `git diff --check`, and report
+files, tests, results, assumptions, risks, and unresolved issues. Work pauses for
+review after each report.
 
-## Work to remove from the current implementation
-
-- The Cloud-only `createSocketIOAgent` bypass.
-- Socket.IO-specific onboarding and verification lifecycle code.
-- Mandatory protobuf upload or protobuf inspection for JSON agents.
-- Organization-wide persona/state-profile sets.
-- Permission maps and permission-aware scenarios.
-- Automatic state synthesis.
-- Multiple selected profiles per evaluation run.
-
-Unrelated work bundled into the existing PRs must be preserved; removal is by
-feature slice, not by wholesale PR revert.
-
-## Implementation sequence and review gates
-
-All repositories use branch `feature/socketio-state-onboarding`, created from the
-latest `main`. Changes remain uncommitted unless the reviewer asks otherwise.
-
-1. **Crosswind**
-   - Files: `api/internal/models/agent.go`,
-     `api/internal/services/agent_service.go`, and
-     `api/internal/services/agent_validation_test.go`.
-   - Add the protocol constant and normal endpoint validation/tests only.
-   - Run focused service tests, the full Go test suite, and `git diff --check`.
+1. **Agent Eval sub-agent**
+   - Repository: `agent-eval` only.
+   - Responsibility: implement the finalized contract, inspection/validation,
+     composed Cloud runtime, factory selection, verification, and evaluation
+     behavior.
+   - Dependencies: canonical `.codex/contracts` artifacts; completed Crosswind
+     protocol constants.
+   - Required tests: Go contract/inspection/verification tests; Python codec,
+     state coordinator, transport, factory, and four-combination tests; focused
+     worker suite; relevant full Go/Python suites.
    - Pause for review.
 
-2. **Agent Eval**
-   - Re-audit the latest `main` and Socket.IO PR changes before editing.
-   - Keep both Cloud adapters together and register Socket.IO in the existing
-     protocol factory.
-   - Make the adapter implement the default JSON payload, configured request event,
-     ack/event response modes, first-turn state, and optional protobuf encoding.
-   - Delete the parallel Socket.IO lifecycle and route all operations through the
-     existing `custom_ws` lifecycle services.
-   - Add adapter/factory/lifecycle tests, then pause for review.
+2. **Platform Backend sub-agent**
+   - Repository: `platform-backend` only.
+   - Responsibility: implement storage/forwarding, generic inspection proxy,
+     common analyze/verify lifecycle, and profile snapshot validation using the
+     finalized contract.
+   - Dependencies: approved Agent Eval checkpoint and its exact API behavior.
+   - Required tests: model/payload, handler, lifecycle, tenant/profile,
+     inspection error propagation, relevant full Go suite.
+   - Pause for review.
 
-3. **Platform Backend**
-   - Re-audit latest `main` and preserve unrelated changes from PR #196.
-   - Remove `createSocketIOAgent` and use the normal agent create/sync/verify path.
-   - Finalize protocol, state-schema, state-profile, analyze/verify, and singular
-     evaluation-selection API contracts.
-   - Remove organization persona APIs, permission behavior, synthesis, and
-     multi-profile evaluation contracts.
-   - Add model/service/handler tests, then pause for review.
+3. **Frontend sub-agent**
+   - Repository: `compfly-security-platform-socketio-state-onboarding` only.
+   - Responsibility: implement the shared endpoint/encoding/state UX and update
+     frontend API contracts to the approved Platform Backend behavior.
+   - Dependencies: approved Agent Eval and Platform Backend checkpoints.
+   - Required tests: contract helpers, component behavior, BFF proxy/error
+     propagation, typecheck, lint for touched files, relevant Vitest suites.
+   - Pause for review.
 
-4. **Frontend**
-   - Re-audit latest `main` and preserve unrelated changes from PR #244.
-   - Make Socket.IO an option in the existing agent onboarding flow.
-   - Default to JSON; expose event/response settings and protobuf fields only when
-     protobuf is selected.
-   - Add optional state-field definition and agent-scoped profile management.
-   - Allow zero or one profile per evaluation and remove persona/permission/
-     synthesis/multi-profile UI.
-   - Add component and client contract tests, then pause for review.
+Crosswind receives no new feature implementation sub-agent because its approved
+runtime scope is already complete. Its focused/full regression tests run during
+integration and final testing.
 
-5. **Integration tests**
-   - JSON Socket.IO onboarding without a `.proto` file.
-   - Shared synchronization and verification lifecycle.
-   - Ack and response-event modes.
-   - No-state (`{}`) and one-profile first-turn state evaluation.
-   - Optional protobuf Socket.IO path.
-   - Regression coverage for `custom_ws` and other existing protocols.
+## Integration sequence
+
+After all service checkpoints are approved:
+
+1. Rebuild/restart affected Terraform-local services in dependency order.
+2. Verify Platform Backend -> Agent Eval API -> worker dependency health.
+3. Test JSON Socket.IO onboarding with no upload, ack and response-event modes.
+4. Test JSON raw WebSocket onboarding and regression behavior.
+5. Test protobuf Socket.IO inspection, save, verification, and evaluation.
+6. Test protobuf raw WebSocket against `examples/flyedge-operator`, including
+   prompt mapping, decoded reply, error mapping, and mixed carry/every-turn state.
+7. Test no profile and exactly one agent-scoped profile per run.
+8. Confirm state values are absent from logs and persisted result projections.
+9. Run complete relevant Crosswind, Agent Eval, Platform Backend, and frontend
+   suites plus `git diff --check` in every repository.
+10. Fix only failures directly caused by this feature and stop for final review.
 
 ## Definition of done
 
-- Socket.IO is selected like `custom_ws`, not created through a special bypass.
-- Crosswind contains no network adapter changes.
-- JSON is the zero-configuration encoding and sends the documented payload.
-- State is optional, common across onboarding transports, agent-scoped, and limited
-  to one selected saved profile per run.
-- Protobuf is optional and shares the same lifecycle.
-- Removed persona/permission/synthesis/multi-profile behavior is absent from public
-  and internal contracts.
-- Each system passes its focused and full relevant tests at its review gate, and
-  the final cross-system integration suite passes.
+- Protocol, encoding, and state lifecycle are independent contract dimensions.
+- No codec or state behavior is duplicated between WebSocket and Socket.IO.
+- Both transports support JSON and protobuf through the same lifecycle.
+- JSON works with no inspection or schema upload.
+- Protobuf and optional manifests normalize to a saved schema artifact and one
+  versioned conversation contract.
+- State is optional, typed, agent-scoped, supports explicit delivery semantics,
+  and uses at most one selected profile per run.
+- Crosswind contains no network adapter or Cloud control-plane logic.
+- Every service and final integration checkpoint is reviewed and approved.

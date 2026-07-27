@@ -1,0 +1,30 @@
+{
+  "endpointConfig": {
+    "protocol": "custom_ws",
+    "endpoint": "wss://agent.example/v1/ws"
+  },
+  "conversationContract": {
+    "contractVersion": "1",
+    "message": {
+      "encoding": "json",
+      "json": {
+        "preset": "compfly_conversation_v1"
+      }
+    },
+    "state": {
+      "defaultDelivery": "initial",
+      "fields": [
+        {
+          "name": "role",
+          "label": "Role",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "location",
+          "type": "string"
+        }
+      ]
+    }
+  }
+}

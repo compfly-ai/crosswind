@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://compfly.ai/contracts/conversation-manifest-v1.schema.json",
+  "title": "CompFly Agent Conversation Manifest v1",
+  "description": "Optional upload manifest normalized by contract inspection. It cannot set endpoint, protocol, authentication, credentials, or profile values.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "message"],
+  "properties": {
+    "contractVersion": { "const": "1" },
+    "message": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["encoding"],
+      "properties": {
+        "encoding": {
+          "type": "string",
+          "enum": ["json", "protobuf"]
+        },
+        "json": {
+          "$ref": "conversation-runtime-v1.schema.json#/$defs/jsonMessageContract"
+        },
+        "protobuf": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["request", "response"],
+          "properties": {
+            "request": {
+              "$ref": "conversation-runtime-v1.schema.json#/$defs/protobufRequestMapping"
+            },
+            "response": {
+              "$ref": "conversation-runtime-v1.schema.json#/$defs/protobufResponseMapping"
+            },
+            "stateMappings": {
+              "$ref": "conversation-runtime-v1.schema.json#/$defs/protobufStateMappings"
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "encoding": { "const": "json" } },
+            "required": ["encoding"]
+          },
+          "then": {
+            "required": ["json"],
+            "properties": { "protobuf": false }
+          }
+        },
+        {
+          "if": {
+            "properties": { "encoding": { "const": "protobuf" } },
+            "required": ["encoding"]
+          },
+          "then": {
+            "required": ["protobuf"],
+            "properties": { "json": false }
+          }
+        }
+      ]
+    },
+    "state": {
+      "$ref": "conversation-runtime-v1.schema.json#/$defs/stateContract"
+    }
+  }
+}

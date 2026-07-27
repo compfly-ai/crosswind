@@ -1,0 +1,35 @@
+{
+  "endpointConfig": {
+    "protocol": "socketio",
+    "endpoint": "https://agent.example",
+    "socketio": {
+      "namespace": "/",
+      "requestEvent": "message",
+      "responseMode": "ack"
+    }
+  },
+  "conversationContract": {
+    "contractVersion": "1",
+    "message": {
+      "encoding": "json",
+      "json": {
+        "preset": "compfly_conversation_v1"
+      }
+    },
+    "state": {
+      "defaultDelivery": "initial",
+      "fields": [
+        {
+          "name": "role",
+          "label": "Role",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "location",
+          "type": "string"
+        }
+      ]
+    }
+  }
+}

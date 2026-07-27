@@ -1,0 +1,50 @@
+{
+  "endpointConfig": {
+    "protocol": "socketio",
+    "endpoint": "https://agent.example",
+    "socketio": {
+      "namespace": "/agents",
+      "requestEvent": "agent_request",
+      "responseMode": "event",
+      "responseEvent": "agent_response"
+    }
+  },
+  "conversationContract": {
+    "contractVersion": "1",
+    "message": {
+      "encoding": "protobuf",
+      "protobuf": {
+        "schemaArtifactId": "schema_socketio_agent_v1",
+        "request": {
+          "messageType": "example.agent.v1.AgentRequest",
+          "promptField": "conversation.prompt"
+        },
+        "response": {
+          "messageType": "example.agent.v1.AgentResponse",
+          "contentField": "conversation.reply",
+          "sessionIdField": "conversation.session_id"
+        },
+        "stateMappings": {
+          "request": {
+            "role": "context.role",
+            "location": "context.location"
+          }
+        }
+      }
+    },
+    "state": {
+      "defaultDelivery": "every_turn",
+      "fields": [
+        {
+          "name": "role",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "location",
+          "type": "string"
+        }
+      ]
+    }
+  }
+}

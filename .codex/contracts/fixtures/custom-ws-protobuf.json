@@ -1,0 +1,60 @@
+{
+  "endpointConfig": {
+    "protocol": "custom_ws",
+    "endpoint": "ws://host.docker.internal:8900/v1/ws"
+  },
+  "conversationContract": {
+    "contractVersion": "1",
+    "message": {
+      "encoding": "protobuf",
+      "protobuf": {
+        "schemaArtifactId": "schema_flyedge_operator_v1",
+        "request": {
+          "messageType": "compfly.operator.v1.Frame",
+          "promptField": "request.input.content"
+        },
+        "response": {
+          "messageType": "compfly.operator.v1.Frame",
+          "contentField": "response.output.content",
+          "sessionIdField": "response.state.session_id",
+          "errorCodeField": "error.code",
+          "errorMessageField": "error.message"
+        },
+        "stateMappings": {
+          "request": {
+            "acting_principal": "request.state.acting_principal",
+            "turn_number": "request.state.turn_number",
+            "location": "request.state.location"
+          },
+          "response": {
+            "acting_principal": "response.state.acting_principal",
+            "turn_number": "response.state.turn_number"
+          }
+        }
+      }
+    },
+    "state": {
+      "defaultDelivery": "carry_forward",
+      "fields": [
+        {
+          "name": "acting_principal",
+          "label": "Acting principal",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "turn_number",
+          "label": "Turn number",
+          "type": "number",
+          "default": 1
+        },
+        {
+          "name": "location",
+          "label": "Location",
+          "type": "string",
+          "delivery": "every_turn"
+        }
+      ]
+    }
+  }
+}
