@@ -271,6 +271,7 @@ const (
 	// Generic protocols (custom HTTP adapters)
 	ProtocolCustom   = "custom"    // Generic HTTP API
 	ProtocolCustomWS = "custom_ws" // Generic WebSocket API
+	ProtocolSocketIO = "socketio"  // Socket.IO API
 
 	// Future protocols (V2)
 	ProtocolA2A = "a2a" // Google Agent-to-Agent protocol

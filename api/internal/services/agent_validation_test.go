@@ -15,6 +15,7 @@ func TestIsValidProtocol(t *testing.T) {
 		models.ProtocolVertex,
 		models.ProtocolCustom,
 		models.ProtocolCustomWS,
+		models.ProtocolSocketIO,
 		models.ProtocolA2A,
 		models.ProtocolMCP,
 	}
@@ -201,6 +202,23 @@ func TestValidateProtocolRequiredFields(t *testing.T) {
 			name: "custom_ws missing endpoint",
 			config: models.EndpointConfig{
 				Protocol: models.ProtocolCustomWS,
+			},
+			wantErr: ErrMissingEndpoint,
+		},
+
+		// Socket.IO protocol
+		{
+			name: "socketio valid",
+			config: models.EndpointConfig{
+				Protocol: models.ProtocolSocketIO,
+				Endpoint: "https://my-agent.example.com",
+			},
+			wantErr: nil,
+		},
+		{
+			name: "socketio missing endpoint",
+			config: models.EndpointConfig{
+				Protocol: models.ProtocolSocketIO,
 			},
 			wantErr: ErrMissingEndpoint,
 		},
