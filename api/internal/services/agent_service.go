@@ -619,7 +619,7 @@ func isValidProtocol(protocol string) bool {
 		models.ProtocolLangGraph, models.ProtocolBedrock, models.ProtocolBedrockAgentCore, models.ProtocolVertex:
 		return true
 	// Generic protocols (custom HTTP adapters)
-	case models.ProtocolCustom, models.ProtocolCustomWS:
+	case models.ProtocolCustom, models.ProtocolCustomWS, models.ProtocolSocketIO:
 		return true
 	// Future protocols (V2)
 	case models.ProtocolA2A, models.ProtocolMCP:
@@ -687,8 +687,8 @@ func validateProtocolRequiredFields(config models.EndpointConfig) error {
 		}
 		return nil
 
-	case models.ProtocolCustomWS:
-		// Custom WebSocket requires endpoint
+	case models.ProtocolCustomWS, models.ProtocolSocketIO:
+		// WebSocket protocols require an endpoint
 		if config.Endpoint == "" {
 			return ErrMissingEndpoint
 		}

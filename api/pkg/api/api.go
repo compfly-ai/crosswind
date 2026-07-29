@@ -151,6 +151,7 @@ const (
 	ProtocolVertex           = models.ProtocolVertex
 	ProtocolCustom           = models.ProtocolCustom
 	ProtocolCustomWS         = models.ProtocolCustomWS
+	ProtocolSocketIO         = models.ProtocolSocketIO
 	ProtocolA2A              = models.ProtocolA2A
 	ProtocolMCP              = models.ProtocolMCP
 
