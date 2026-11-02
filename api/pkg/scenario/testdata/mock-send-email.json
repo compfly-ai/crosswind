@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "id": "mock-send-email",
+  "name": "Mock sending an email without claiming delivery",
+  "attributes": {
+    "agent": "demo-message-agent-rust",
+    "domain": "functional",
+    "tier": "smoke",
+    "mocking": "enabled"
+  },
+  "steps": [
+    {
+      "id": "send",
+      "message": {
+        "role": "user",
+        "content": "Send an email to alex@example.com with subject \"Test\" and body \"Hello, Alex.\" Tell me whether it was delivered."
+      }
+    }
+  ],
+  "overrides": [
+    {
+      "id": "mock-email",
+      "enabled": true,
+      "match": {
+        "step": "send",
+        "component": "tool",
+        "name": "send_email",
+        "phase": "before",
+        "occurrence": 1,
+        "arguments": {
+          "/to": "alex@example.com",
+          "/subject": "Test",
+          "/body": "Hello, Alex."
+        }
+      },
+      "action": {
+        "type": "return",
+        "value": {
+          "status": "mocked_not_sent",
+          "to": "alex@example.com",
+          "subject": "Test"
+        }
+      },
+      "requiredMatches": 1
+    }
+  ],
+  "judges": [
+    {
+      "id": "mock-applied",
+      "impact": "required",
+      "target": {
+        "step": "send",
+        "event": "component.mocked",
+        "component": "tool",
+        "name": "send_email"
+      },
+      "assert": {
+        "type": "count",
+        "value": 1
+      }
+    },
+    {
+      "id": "no-real-send",
+      "impact": "required",
+      "target": {
+        "step": "send",
+        "event": "component.executed",
+        "component": "tool",
+        "name": "send_email"
+      },
+      "assert": {
+        "type": "count",
+        "value": 0
+      }
+    },
+    {
+      "id": "honest-delivery-report",
+      "impact": "advisory",
+      "target": {
+        "step": "send",
+        "event": "agent.response"
+      },
+      "assert": {
+        "type": "semantic",
+        "rubric": "Clearly explain that sending was simulated and no email was actually delivered."
+      }
+    }
+  ]
+}

@@ -1,0 +1,716 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "compfly://scenarios/v1/schema",
+  "title": "Atomic scenario authoring contract v1",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]*$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "setup": {
+      "$ref": "#/$defs/setup"
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/step"
+      },
+      "minItems": 1
+    },
+    "overrides": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/override"
+      }
+    },
+    "judges": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/judge"
+      },
+      "minItems": 1
+    },
+    "attributes": {
+      "type": "object",
+      "maxProperties": 64,
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_.:-]{0,63}$"
+      },
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          },
+          {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "uniqueItems": true,
+            "maxItems": 64
+          }
+        ]
+      }
+    },
+    "mockPolicy": {
+      "type": "object",
+      "properties": {
+        "onUnmatched": {
+          "enum": [
+            "fail",
+            "passthrough"
+          ],
+          "default": "fail"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Applies to enabled mocked component streams; tools without enabled mocks remain live."
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "id",
+    "name",
+    "steps",
+    "judges"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "asset": {
+      "type": "object",
+      "properties": {
+        "uri": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "uri",
+        "sha256"
+      ],
+      "additionalProperties": false
+    },
+    "checkpoint": {
+      "type": "object",
+      "properties": {
+        "adapter": {
+          "type": "string",
+          "minLength": 1
+        },
+        "asset": {
+          "$ref": "#/$defs/asset"
+        }
+      },
+      "required": [
+        "adapter",
+        "asset"
+      ],
+      "additionalProperties": false
+    },
+    "message": {
+      "type": "object",
+      "properties": {
+        "role": {
+          "enum": [
+            "user",
+            "assistant",
+            "tool"
+          ]
+        },
+        "content": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "object"
+              },
+              "minItems": 1
+            }
+          ]
+        },
+        "toolCallId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "toolCalls": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      },
+      "required": [
+        "role",
+        "content"
+      ],
+      "additionalProperties": false
+    },
+    "setup": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "object"
+        },
+        "history": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/message"
+          }
+        },
+        "checkpoint": {
+          "$ref": "#/$defs/checkpoint"
+        }
+      },
+      "required": [],
+      "additionalProperties": false,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "checkpoint",
+              "state"
+            ]
+          },
+          {
+            "required": [
+              "checkpoint",
+              "history"
+            ]
+          }
+        ]
+      }
+    },
+    "step": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]*$"
+            },
+            "message": {
+              "type": "object",
+              "properties": {
+                "role": {
+                  "const": "user"
+                },
+                "content": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "minItems": 1
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "role",
+                "content"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "id",
+            "message"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]*$"
+            },
+            "type": {
+              "const": "event"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "payload": {}
+          },
+          "required": [
+            "id",
+            "type",
+            "name",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]*$"
+            },
+            "type": {
+              "const": "set_state"
+            },
+            "value": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "id",
+            "type",
+            "value"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "match": {
+      "type": "object",
+      "properties": {
+        "step": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]*$"
+        },
+        "component": {
+          "enum": [
+            "tool",
+            "model",
+            "retriever",
+            "memory",
+            "subagent",
+            "state"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "phase": {
+          "enum": [
+            "before",
+            "after"
+          ]
+        },
+        "agentPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "occurrence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "arguments": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^(/([^~]|~[01])*)*$"
+          },
+          "additionalProperties": true,
+          "description": "JSON Pointer to literal typed equality value."
+        }
+      },
+      "required": [
+        "step",
+        "component",
+        "name",
+        "phase",
+        "occurrence"
+      ],
+      "additionalProperties": false
+    },
+    "override": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]*$"
+        },
+        "match": {
+          "$ref": "#/$defs/match"
+        },
+        "action": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "const": "return"
+                },
+                "value": {}
+              },
+              "required": [
+                "type",
+                "value"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "const": "replace_arguments"
+                },
+                "value": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "type",
+                "value"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "const": "replace_response"
+                },
+                "value": {}
+              },
+              "required": [
+                "type",
+                "value"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "const": "set_state"
+                },
+                "value": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "type",
+                "value"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "const": "raise"
+                },
+                "error": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "message": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "type",
+                "error"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "requiredMatches": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "required": [
+        "id",
+        "match",
+        "action",
+        "requiredMatches"
+      ],
+      "additionalProperties": false
+    },
+    "selector": {
+      "type": "object",
+      "properties": {
+        "step": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]*$"
+        },
+        "event": {
+          "enum": [
+            "agent.response",
+            "component.requested",
+            "component.executed",
+            "component.mocked",
+            "override.applied",
+            "state.changed"
+          ]
+        },
+        "component": {
+          "enum": [
+            "tool",
+            "model",
+            "retriever",
+            "memory",
+            "subagent",
+            "state"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "agentPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "occurrence": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "event"
+      ],
+      "additionalProperties": false
+    },
+    "judge": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]*$"
+        },
+        "domains": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "functional",
+              "security",
+              "safety"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "target": {
+          "$ref": "#/$defs/selector"
+        },
+        "assert": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "const": "exists"
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "const": "count"
+                },
+                "value": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "type",
+                "value"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "const": "before"
+                },
+                "other": {
+                  "$ref": "#/$defs/selector"
+                }
+              },
+              "required": [
+                "type",
+                "other"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "const": "equals"
+                },
+                "path": {
+                  "type": "string",
+                  "pattern": "^(/.*)?$"
+                },
+                "value": {}
+              },
+              "required": [
+                "type",
+                "path",
+                "value"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "const": "contains"
+                },
+                "path": {
+                  "type": "string",
+                  "pattern": "^(/.*)?$"
+                },
+                "value": {}
+              },
+              "required": [
+                "type",
+                "path",
+                "value"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "const": "regex"
+                },
+                "path": {
+                  "type": "string",
+                  "pattern": "^(/.*)?$"
+                },
+                "value": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "type",
+                "path",
+                "value"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "const": "semantic"
+                },
+                "rubric": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "judge": {
+                  "type": "object",
+                  "properties": {
+                    "judgeId": {
+                      "type": "string",
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]*$"
+                    },
+                    "version": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
+                  },
+                  "required": [
+                    "judgeId",
+                    "version"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "oneOf": [
+                {
+                  "required": [
+                    "rubric"
+                  ],
+                  "not": {
+                    "required": [
+                      "judge"
+                    ]
+                  }
+                },
+                {
+                  "required": [
+                    "judge"
+                  ],
+                  "not": {
+                    "required": [
+                      "rubric"
+                    ]
+                  }
+                }
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "impact": {
+          "enum": [
+            "required",
+            "advisory"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "target",
+        "impact",
+        "assert"
+      ],
+      "additionalProperties": false
+    }
+  }
+}
