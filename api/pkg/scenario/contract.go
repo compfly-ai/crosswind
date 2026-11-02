@@ -179,6 +179,11 @@ func Validate(raw []byte) Result {
 		return r
 	}
 	add := func(code, path, message string) { r.Issues = append(r.Issues, Issue{code, path, message}) }
+	if setup, ok := d["setup"].(map[string]any); ok {
+		if history, ok := setup["history"].([]any); ok {
+			r.Issues = append(r.Issues, ValidateHistory(history)...)
+		}
+	}
 	steps := map[string]bool{}
 	for i, x := range d["steps"].([]any) {
 		s := x.(map[string]any)
