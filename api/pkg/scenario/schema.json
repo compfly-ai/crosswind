@@ -286,6 +286,48 @@
             "value"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]*$"
+            },
+            "adaptive": {
+              "type": "object",
+              "properties": {
+                "maxTurns": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 32
+                },
+                "instructions": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 16000,
+                  "pattern": "\\S"
+                },
+                "stopOn": {
+                  "enum": [
+                    "required_judge_failure",
+                    "turn_limit"
+                  ]
+                }
+              },
+              "required": [
+                "maxTurns",
+                "instructions",
+                "stopOn"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "id",
+            "adaptive"
+          ],
+          "additionalProperties": false
         }
       ]
     },

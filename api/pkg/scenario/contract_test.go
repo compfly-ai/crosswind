@@ -108,3 +108,45 @@ func TestPolicyDecisionSelector(t *testing.T) {
 		t.Fatal("accepted unknown policy stage")
 	}
 }
+
+func TestAdaptiveStepsAreBoundedAndCapabilityGated(t *testing.T) {
+	d := fixture(t)
+	d["steps"] = append(d["steps"].([]any), map[string]any{"id": "probe", "adaptive": map[string]any{"maxTurns": 12, "instructions": "Adapt to the latest reply", "stopOn": "turn_limit"}})
+	raw, _ := json.Marshal(d)
+	v := Validate(raw)
+	if !v.Valid {
+		t.Fatal(v.Issues)
+	}
+	c := Capabilities{Hooks: []Hook{{"tool", "before", "return"}}}
+	if len(Preflight(v.Definition, c)) != 1 {
+		t.Fatal("adaptive capability must be explicit")
+	}
+	c.AdaptiveTurns = true
+	if len(Preflight(v.Definition, c)) != 0 {
+		t.Fatal("supported adaptive step rejected")
+	}
+	a := d["steps"].([]any)[1].(map[string]any)["adaptive"].(map[string]any)
+	for _, n := range []int{0, 33} {
+		a["maxTurns"] = n
+		raw, _ = json.Marshal(d)
+		if Validate(raw).Valid {
+			t.Fatal("unbounded turns accepted")
+		}
+	}
+	a["maxTurns"] = 1
+	a["stopOn"] = "required_judge_failure"
+	raw, _ = json.Marshal(d)
+	if Validate(raw).Valid {
+		t.Fatal("stop condition without judge accepted")
+	}
+	d["judges"].([]any)[0].(map[string]any)["target"].(map[string]any)["step"] = "probe"
+	raw, _ = json.Marshal(d)
+	if !Validate(raw).Valid {
+		t.Fatal(Validate(raw).Issues)
+	}
+	a["instructions"] = "  "
+	raw, _ = json.Marshal(d)
+	if Validate(raw).Valid {
+		t.Fatal("empty instruction accepted")
+	}
+}

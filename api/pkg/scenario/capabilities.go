@@ -5,6 +5,7 @@ import "fmt"
 // Capabilities describe the actual adapter, not the connection purpose or language.
 // False means unsupported; no feature is inferred from reverse WS availability.
 type Capabilities struct {
+	AdaptiveTurns     bool   `json:"adaptiveTurns"`
 	StateRestore      bool   `json:"stateRestore"`
 	HistoryRestore    bool   `json:"historyRestore"`
 	CheckpointRestore bool   `json:"checkpointRestore"`
@@ -37,6 +38,9 @@ func Preflight(d map[string]any, c Capabilities) []Issue {
 	}
 	for i, x := range d["steps"].([]any) {
 		s := x.(map[string]any)
+		if s["adaptive"] != nil && !c.AdaptiveTurns {
+			add(fmt.Sprintf("/steps/%d/adaptive", i), "platform-generated adaptive turns")
+		}
 		if s["type"] == "event" && !c.EventStimulus {
 			add(fmt.Sprintf("/steps/%d", i), "external events")
 		}

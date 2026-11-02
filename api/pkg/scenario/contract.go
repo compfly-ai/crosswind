@@ -225,6 +225,30 @@ func Validate(raw []byte) Result {
 			}
 		}
 	}
+	budget := 0
+	for i, x := range d["steps"].([]any) {
+		step := x.(map[string]any)
+		if adaptive, ok := step["adaptive"].(map[string]any); ok {
+			budget += int(adaptive["maxTurns"].(float64))
+			if adaptive["stopOn"] == "required_judge_failure" {
+				found := false
+				for _, raw := range d["judges"].([]any) {
+					j := raw.(map[string]any)
+					if j["impact"] == "required" && j["target"].(map[string]any)["step"] == step["id"] {
+						found = true
+					}
+				}
+				if !found {
+					add("missing_stop_judge", fmt.Sprintf("/steps/%d/adaptive/stopOn", i), "requires a required judge targeted at this adaptive step")
+				}
+			}
+		} else {
+			budget++
+		}
+	}
+	if budget > 128 {
+		add("turn_budget_exceeded", "/steps", "scenario supports at most 128 planned turns")
+	}
 	sort.SliceStable(r.Issues, func(i, j int) bool { return r.Issues[i].Path < r.Issues[j].Path })
 	if len(r.Issues) > 0 {
 		return r
