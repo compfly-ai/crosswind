@@ -1,4 +1,5 @@
-// Package scenario defines the common atomic scenario authoring boundary.
+// Package scenario is a frozen compatibility snapshot of the scenario contract.
+// Deprecated: use Platform svc/agent-eval/services/api/pkg/scenario and its API.
 // Validation never installs mocks, restores state, grants permission or executes an agent.
 package scenario
 
