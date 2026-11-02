@@ -92,3 +92,19 @@ func TestCapabilityPreflightNeverDowngradesStateToPrompt(t *testing.T) {
 		t.Fatal(issues)
 	}
 }
+
+func TestPolicyDecisionSelector(t *testing.T) {
+	d := fixture(t)
+	j := d["judges"].([]any)[0].(map[string]any)
+	j["target"] = map[string]any{"event": "policy.decision", "component": "tool", "name": "read_messages", "stage": "tool_call_response"}
+	j["assert"] = map[string]any{"type": "equals", "path": "/outcome", "value": map[string]any{"action": "deny", "reason": "inbox_injection"}}
+	raw, _ := json.Marshal(d)
+	if v := Validate(raw); !v.Valid {
+		t.Fatal(v.Issues)
+	}
+	j["target"].(map[string]any)["stage"] = "made_up_stage"
+	raw, _ = json.Marshal(d)
+	if v := Validate(raw); v.Valid {
+		t.Fatal("accepted unknown policy stage")
+	}
+}

@@ -479,7 +479,8 @@
             "component.executed",
             "component.mocked",
             "override.applied",
-            "state.changed"
+            "state.changed",
+            "policy.decision"
           ]
         },
         "component": {
@@ -503,6 +504,14 @@
         "occurrence": {
           "type": "integer",
           "minimum": 1
+        },
+        "stage": {
+          "enum": [
+            "pre_llm",
+            "post_llm",
+            "tool_call",
+            "tool_call_response"
+          ]
         }
       },
       "required": [
