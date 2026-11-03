@@ -64,7 +64,7 @@ test-api:
 	cd api && go test ./...
 
 test-worker:
-	cd worker && uv run pytest
+	cd worker && uv run --extra dev pytest
 
 # Health check
 health:
