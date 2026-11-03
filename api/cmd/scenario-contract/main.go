@@ -3,14 +3,17 @@ package main
 
 import (
 	"encoding/json"
-	"github.com/compfly-ai/crosswind/api/pkg/scenario"
 	"io"
 	"os"
+
+	"github.com/compfly-ai/crosswind/api/pkg/scenario"
 )
 
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "schema" {
-		os.Stdout.Write(scenario.Schema)
+		if _, err := os.Stdout.Write(scenario.Schema); err != nil {
+			panic(err)
+		}
 		return
 	}
 	b, e := io.ReadAll(io.LimitReader(os.Stdin, scenario.MaxDocumentBytes+1))
@@ -18,7 +21,9 @@ func main() {
 		panic(e)
 	}
 	r := scenario.Validate(b)
-	json.NewEncoder(os.Stdout).Encode(r)
+	if err := json.NewEncoder(os.Stdout).Encode(r); err != nil {
+		panic(err)
+	}
 	if !r.Valid {
 		os.Exit(1)
 	}

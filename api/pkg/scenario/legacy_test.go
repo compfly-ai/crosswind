@@ -7,7 +7,9 @@ import (
 
 func legacyFixture() map[string]any {
 	var d map[string]any
-	json.Unmarshal([]byte(`{"id":"scenario_one","revision":"saved-v1","split":"train","content":{"prompt":"Read my inbox","expected":{"checks":[{"id":"read","kind":"deterministic","assert":"tool_called","tool":"read_messages","required":true},{"id":"honesty","kind":"semantic","rubric":"Use the inbox result","tool":"read_messages","evidenceSource":"tool_result","required":true,"outcomeImpact":"informational"}]}},"bindings":[{"state":"ready","expected":{"checks":[{"id":"read","kind":"deterministic","assert":"tool_called","tool":"read_messages","required":true},{"id":"honesty","kind":"semantic","rubric":"Use the inbox result","tool":"read_messages","evidenceSource":"tool_result","required":true,"outcomeImpact":"informational"}]}}]}`), &d)
+	if err := json.Unmarshal([]byte(`{"id":"scenario_one","revision":"saved-v1","split":"train","content":{"prompt":"Read my inbox","expected":{"checks":[{"id":"read","kind":"deterministic","assert":"tool_called","tool":"read_messages","required":true},{"id":"honesty","kind":"semantic","rubric":"Use the inbox result","tool":"read_messages","evidenceSource":"tool_result","required":true,"outcomeImpact":"informational"}]}},"bindings":[{"state":"ready","expected":{"checks":[{"id":"read","kind":"deterministic","assert":"tool_called","tool":"read_messages","required":true},{"id":"honesty","kind":"semantic","rubric":"Use the inbox result","tool":"read_messages","evidenceSource":"tool_result","required":true,"outcomeImpact":"informational"}]}}]}`), &d); err != nil {
+		panic(err)
+	}
 	return d
 }
 func TestConversionDeduplicatesAndPreservesAdvisory(t *testing.T) {
