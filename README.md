@@ -1,5 +1,12 @@
 # Crosswind
 
+> **Deprecated.** Active evaluation development has moved to CompFly Platform.
+> The authoritative scenario contract now lives in
+> `compfly-ai/platform/svc/agent-eval/services/api/pkg/scenario`, with its CLI in
+> `svc/agent-eval/services/api/cmd/scenario-contract`.
+> This repository remains available for existing pinned consumers; deprecation
+> does not mean those dependencies have already been removed. See [DEPRECATION.md](DEPRECATION.md).
+
 Security evaluation for AI agents—not just LLMs, but the full agentic system with tools, memory, and multi-turn conversations.
 
 Crosswind tests your agent against adversarial scenarios: prompt injections that target tool calls, jailbreaks that exploit conversation context, and attacks that chain across multiple turns. You get a report showing exactly where your agent's defenses break down.
